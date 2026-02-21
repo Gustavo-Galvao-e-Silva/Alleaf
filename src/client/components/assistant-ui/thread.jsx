@@ -160,7 +160,10 @@ const ChatMessage = () => {
     <MessagePrimitive.Root className="group/message relative mx-auto flex w-full max-w-3xl flex-col">
       <AuiIf condition={(s) => s.message.role === "user"}>
         <div className="flex flex-col items-end py-1.5 pr-1">
-          <div className="relative max-w-[80%] rounded-[22px] bg-[#d9e5cc] px-7 py-9 text-[15px] leading-relaxed text-black/90 shadow-sm">
+          <div
+            className="relative max-w-[80%] rounded-[22px] bg-[#d9e5cc] text-[15px] leading-relaxed text-black/90 shadow-sm"
+            style={{ padding: "5px 10px" }}
+          >
             <MessagePrimitive.Parts components={{ Text: UserText }} />
           </div>
           <div className="mt-0.5 flex h-7 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-200 group-focus-within/message:opacity-100 group-hover/message:opacity-100">
