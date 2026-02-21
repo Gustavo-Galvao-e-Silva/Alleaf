@@ -10,3 +10,6 @@ __pycache__/
 
 #cursor
 .cursor/
+
+# Input data
+src/server/data/input

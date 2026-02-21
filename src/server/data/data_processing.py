@@ -3,11 +3,8 @@ import numpy as np
 import pandas as pd
 import neurokit2 as nk
 
-# -----------------------------
-# Configuration
-# -----------------------------
 FS = 700
-WINDOW_SECONDS = 60
+WINDOW_SECONDS = 45
 WINDOW_SIZE = FS * WINDOW_SECONDS
 INPUT_PATH = f"../data/input"
 OUTPUT_PATH = f"../data/output"
@@ -30,9 +27,6 @@ DEMOGRAPHICS = {
 }
 
 
-# -----------------------------
-# I/O
-# -----------------------------
 def load_participant(path_to_pkl):
     with open(path_to_pkl, "rb") as f:
         return pickle.load(f, encoding="latin1")
@@ -55,9 +49,6 @@ def extract_demographics(data):
     }
 
 
-# -----------------------------
-# Labelling
-# -----------------------------
 def get_majority_label(label_window):
     unique, counts = np.unique(label_window, return_counts=True)
     return unique[np.argmax(counts)]
@@ -69,9 +60,6 @@ def to_binary_label(majority_label, keep=(1, 2)):
     return 1 if majority_label == 2 else 0
 
 
-# -----------------------------
-# HRV Feature Extraction
-# -----------------------------
 def extract_hrv_features(ecg_window, fs=FS):
     signals, info = nk.ecg_process(ecg_window, sampling_rate=fs)
     mean_hr = signals["ECG_Rate"].mean()
@@ -87,14 +75,11 @@ def extract_hrv_features(ecg_window, fs=FS):
 
     return {
         "mean_hr": mean_hr,
-        "rmssd_60s": rmssd,
-        "sdnn_60s": sdnn,
+        f"rmssd_{WINDOW_SECONDS}s": rmssd,
+        f"sdnn_{WINDOW_SECONDS}s": sdnn,
     }
 
 
-# -----------------------------
-# Windowing
-# -----------------------------
 def generate_windows(ecg, labels, window_size=WINDOW_SIZE):
     n_samples = len(ecg)
     for start in range(0, n_samples - window_size, window_size):
@@ -119,9 +104,6 @@ def process_window(ecg_window, label_window):
     return {**features, "stress": binary_label}
 
 
-# -----------------------------
-# Main pipeline
-# -----------------------------
 def create_windows_df(path_to_pkl, subject_id):
     data = load_participant(f"{path_to_pkl}/{subject_id}/{subject_id}.pkl")
     ecg, labels = extract_signals(data)
@@ -131,14 +113,12 @@ def create_windows_df(path_to_pkl, subject_id):
     for ecg_window, label_window in generate_windows(ecg, labels):
         row = process_window(ecg_window, label_window)
         if row is not None:
+            row["subject_id"] = subject_id
             rows.append({**row, **demographics})
 
     return pd.DataFrame(rows)
 
 
-# -----------------------------
-# Example usage
-# -----------------------------
 if __name__ == "__main__":
     df_list = [
         create_windows_df(INPUT_PATH, subject_id) for subject_id in DEMOGRAPHICS.keys()
