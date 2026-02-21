@@ -96,31 +96,37 @@ def save_chat():
 
 from graph import app_agent # Import the compiled LangGraph
 
-@app.route('/agent/start', methods=['POST'])
-def start_agent():
+# Change the endpoint name to match what Next.js is calling
+@app.route('/agent/run_session', methods=['POST'])
+def run_session():
     try:
         data = request.json
         user_id = data.get('user_id')
+        user_message = data.get('message') # The message from the curl
 
-        # Initialize the state for the research node
-        initial_state = {
+        # 1. Reconstruct the state
+        # In a real app, you'd pull the 'evidence' and 'transcript' from a cache/DB
+        # For now, we'll initialize it to keep the agent running
+        state = {
             "user_id": user_id,
-            "session_id": str(int(time.time())),
-            "transcript": [],
-            "evidence": [],
+            "transcript": [HumanMessage(content=user_message)],
+            "evidence": [], # This would be filled by the research_node normally
+            "patient_file": "",
             "food_for_thought": "",
             "exercises": []
         }
 
-        # Run ONLY the research part for now
-        # Using 'interrupt' logic is complex, so we'll just get the start
-        result = app_agent.invoke(initial_state)
+        # 2. Run the Graph
+        # Note: app_agent must be imported from your graph.py
+        result = app_agent.invoke(state)
 
+        # 3. Return the response back to Next.js
         return jsonify({
-            "food_for_thought": result['food_for_thought'],
-            "evidence_count": len(result['evidence'])
+            "therapy_response": result['transcript'][-1].content,
+            "status": "success"
         })
     except Exception as e:
+        print(f"Error in run_session: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/journal/save_session', methods=['POST'])
