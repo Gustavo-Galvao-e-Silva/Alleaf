@@ -155,5 +155,29 @@ def run_session():
             "full_transcript": [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in result['transcript']]
         })
 
+@app.route('/journal/save_session', methods=['POST'])
+def save_session():
+    try:
+        data = request.json
+        full_text = data.get('text')
+        user_id = data.get('user_id')
+
+        vector = get_embedding(full_text)
+
+        client.upsert(
+            COLLECTION,
+            id=int(time.time()),
+            vector=vector,
+            payload={
+                "text": f"Session Summary: {full_text}",
+                "user_id": user_id,
+                "type": "session_memory"
+            }
+        )
+        client.flush(COLLECTION)
+        return jsonify({"status": "saved"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(port=5001)
