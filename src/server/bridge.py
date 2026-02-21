@@ -94,14 +94,34 @@ def save_chat():
     )
     return jsonify({"success": True})
 
+from graph import app_agent # Import the compiled LangGraph
 
 @app.route('/agent/start', methods=['POST'])
 def start_agent():
-    data = request.json
-    # Run the research node specifically
-    initial_state = {"user_id": data['user_id'], "transcript": [], "evidence": []}
-    result = app_agent.invoke(initial_state)
-    return jsonify(result)
+    try:
+        data = request.json
+        user_id = data.get('user_id')
+
+        # Initialize the state for the research node
+        initial_state = {
+            "user_id": user_id,
+            "session_id": str(int(time.time())),
+            "transcript": [],
+            "evidence": [],
+            "food_for_thought": "",
+            "exercises": []
+        }
+
+        # Run ONLY the research part for now
+        # Using 'interrupt' logic is complex, so we'll just get the start
+        result = app_agent.invoke(initial_state)
+
+        return jsonify({
+            "food_for_thought": result['food_for_thought'],
+            "evidence_count": len(result['evidence'])
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/journal/save_session', methods=['POST'])
 def save_session():
