@@ -2,14 +2,21 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req) {
   try {
-    const data = await req.json();
-    
-    // We'll just return success for now to test the route
-    return NextResponse.json({ 
-      message: "Route is working!", 
-      received: data.text 
+    const { userId, text, id } = await req.json();
+
+    // No vectorization here! Just send the raw text to Python.
+    const res = await fetch('http://localhost:5001/upsert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        text: text,
+        id: id
+      })
     });
+
+    return NextResponse.json(await res.json());
   } catch (err) {
-    return NextResponse.json({ error: "JSON Parsing Failed: " + err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
