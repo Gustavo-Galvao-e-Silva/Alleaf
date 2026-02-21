@@ -1,5 +1,4 @@
 import styles from "./page.module.css";
-import VideoBackground from "./components/VideoBackground";
 import TypedName from "./components/TypedName";
 
 const EXERCISES = [
@@ -127,7 +126,7 @@ function QuoteIcon() {
 export default function Home() {
   return (
     <>
-      <VideoBackground className={styles.videoBg} />
+      <div className={styles.videoBg} aria-hidden="true" />
       <main className={styles.page}>
         {/* Hero */}
         <section className={styles.hero}>

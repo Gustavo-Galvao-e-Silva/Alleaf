@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import styles from "./page.module.css";
-import VideoBackground from "../components/VideoBackground";
 
 const PROMPTS = [
   "What are three things you're grateful for today?",
@@ -12,36 +11,12 @@ const PROMPTS = [
   "What are your goals for the next month?",
 ];
 
-const JOURNAL_HISTORY = [
-  {
-    id: 1,
-    date: "Feb 20",
-    time: "9:30 AM",
-    type: "Free Writing",
-    preview: "Today was a beautiful day. I woke up feeling refreshed and...",
-  },
-  {
-    id: 2,
-    date: "Feb 19",
-    time: "8:15 PM",
-    type: "Prompted",
-    preview: "I'm grateful for my family, my health, and the opportunity to...",
-  },
-  {
-    id: 3,
-    date: "Feb 18",
-    time: "7:45 AM",
-    type: "Free Writing",
-    preview: "Reflecting on my week, I've learned so much about myself...",
-  },
-  {
-    id: 4,
-    date: "Feb 17",
-    time: "6:00 PM",
-    type: "Prompted",
-    preview: "My ideal day starts with a peaceful morning routine...",
-  },
-];
+function formatDateTime() {
+  const now = new Date();
+  const date = now.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  return { date, time };
+}
 
 const TABS = ["Free Writing", "Prompted", "History"];
 
@@ -101,15 +76,6 @@ const NAV_ITEMS = [
   },
 ];
 
-function SendIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="22" y1="2" x2="11" y2="13" />
-      <polygon points="22 2 15 22 11 13 2 9 22 2" />
-    </svg>
-  );
-}
-
 function SparkleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -118,25 +84,155 @@ function SparkleIcon() {
   );
 }
 
+function NoteEditor({ title, body, onTitleChange, onBodyChange, titlePlaceholder, bodyPlaceholder }) {
+  const bodyRef = useRef(null);
+
+  const handleTitleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      bodyRef.current?.focus();
+    }
+  };
+
+  return (
+    <div className={styles.noteContainer}>
+      <input
+        className={styles.noteTitle}
+        type="text"
+        value={title}
+        onChange={(e) => onTitleChange(e.target.value)}
+        onKeyDown={handleTitleKeyDown}
+        placeholder={titlePlaceholder}
+        spellCheck="false"
+        autoComplete="off"
+      />
+      <textarea
+        ref={bodyRef}
+        className={styles.noteBody}
+        value={body}
+        onChange={(e) => onBodyChange(e.target.value)}
+        placeholder={bodyPlaceholder}
+        spellCheck="true"
+      />
+    </div>
+  );
+}
+
 export default function JournalPage() {
   const [activeTab, setActiveTab] = useState(0);
-  const [freeText, setFreeText] = useState("");
-  const [promptedText, setPromptedText] = useState("");
+  const [freeTitle, setFreeTitle] = useState("");
+  const [freeBody, setFreeBody] = useState("");
+  const [promptedTitle, setPromptedTitle] = useState("");
+  const [promptedBody, setPromptedBody] = useState("");
   const [currentPrompt] = useState(
     PROMPTS[Math.floor(Math.random() * PROMPTS.length)]
   );
 
+  const [history, setHistory] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+
+  const [freeDirty, setFreeDirty] = useState(false);
+  const [promptedDirty, setPromptedDirty] = useState(false);
+  const [saveLabel, setSaveLabel] = useState("");
+
+  const handleFreeTitleChange = (val) => {
+    setFreeTitle(val);
+    if (!freeDirty && val) setFreeDirty(true);
+    if (saveLabel) setSaveLabel("");
+  };
+  const handleFreeBodyChange = (val) => {
+    setFreeBody(val);
+    if (!freeDirty && val) setFreeDirty(true);
+    if (saveLabel) setSaveLabel("");
+  };
+  const handlePromptedTitleChange = (val) => {
+    setPromptedTitle(val);
+    if (!promptedDirty && val) setPromptedDirty(true);
+    if (saveLabel) setSaveLabel("");
+  };
+  const handlePromptedBodyChange = (val) => {
+    setPromptedBody(val);
+    if (!promptedDirty && val) setPromptedDirty(true);
+    if (saveLabel) setSaveLabel("");
+  };
+
+  const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
+  const showSave = isDirty && saveLabel !== "saved";
+
+  const handleSave = () => {
+    const title = activeTab === 0 ? freeTitle : promptedTitle;
+    const body = activeTab === 0 ? freeBody : promptedBody;
+    const type = activeTab === 0 ? "Free Writing" : "Prompted";
+    const { date, time } = formatDateTime();
+
+    const entry = {
+      id: editingId || Date.now(),
+      title: title || "Untitled",
+      date,
+      time,
+      type,
+      body,
+      preview: body.length > 80 ? body.slice(0, 80) + "…" : body,
+    };
+
+    if (editingId) {
+      setHistory((prev) => prev.map((h) => (h.id === editingId ? entry : h)));
+      setEditingId(null);
+    } else {
+      setHistory((prev) => [entry, ...prev]);
+    }
+    setSaveLabel("saved");
+
+    if (activeTab === 0) {
+      setFreeTitle("");
+      setFreeBody("");
+      setFreeDirty(false);
+    }
+    if (activeTab === 1) {
+      setPromptedTitle("");
+      setPromptedBody("");
+      setPromptedDirty(false);
+    }
+  };
+
+  const handleHistoryClick = (entry) => {
+    const tabIndex = entry.type === "Free Writing" ? 0 : 1;
+    if (tabIndex === 0) {
+      setFreeTitle(entry.title === "Untitled" ? "" : entry.title);
+      setFreeBody(entry.body);
+      setFreeDirty(true);
+    } else {
+      setPromptedTitle(entry.title === "Untitled" ? "" : entry.title);
+      setPromptedBody(entry.body);
+      setPromptedDirty(true);
+    }
+    setEditingId(entry.id);
+    setSaveLabel("");
+    setActiveTab(tabIndex);
+  };
+
   return (
     <>
-      <VideoBackground className={styles.bg} />
+      <div className={styles.bg} aria-hidden="true" />
       <main className={styles.page}>
-        {/* Header */}
         <header className={styles.header}>
-          <h1 className={styles.title}>Journal</h1>
-          <p className={styles.subtitle}>Express your thoughts</p>
+          <div className={styles.headerRow}>
+            <div>
+              <h1 className={styles.title}>Journal</h1>
+              <p className={styles.subtitle}>Express your thoughts</p>
+            </div>
+            {(showSave || saveLabel === "saved") && (
+              <button
+                className={`${styles.saveBtn} ${saveLabel === "saved" ? styles.saveBtnDone : ""}`}
+                onClick={saveLabel === "saved" ? undefined : handleSave}
+                disabled={saveLabel === "saved"}
+              >
+                {saveLabel === "saved" ? "Saved!" : "Save"}
+              </button>
+            )}
+          </div>
         </header>
 
-        {/* Tabs */}
         <div className={styles.tabBar}>
           {TABS.map((tab, i) => (
             <button
@@ -150,37 +246,19 @@ export default function JournalPage() {
           ))}
         </div>
 
-        {/* Free Writing */}
         {activeTab === 0 && (
           <section className={styles.content}>
-            <div className={styles.card}>
-              <label className={styles.label}>
-                Write freely about anything on your mind
-              </label>
-              <textarea
-                className={styles.textarea}
-                value={freeText}
-                onChange={(e) => setFreeText(e.target.value)}
-                placeholder="Start writing..."
-                rows={12}
-              />
-              <div className={styles.cardFooter}>
-                <span className={styles.charCount}>
-                  {freeText.length} characters
-                </span>
-                <button
-                  className={styles.saveButton}
-                  disabled={!freeText.trim()}
-                >
-                  <SendIcon />
-                  Save Entry
-                </button>
-              </div>
-            </div>
+            <NoteEditor
+              title={freeTitle}
+              body={freeBody}
+              onTitleChange={handleFreeTitleChange}
+              onBodyChange={handleFreeBodyChange}
+              titlePlaceholder="Title"
+              bodyPlaceholder="Body"
+            />
           </section>
         )}
 
-        {/* Prompted Writing */}
         {activeTab === 1 && (
           <section className={styles.content}>
             <div className={styles.promptCard}>
@@ -192,49 +270,37 @@ export default function JournalPage() {
                 <p className={styles.promptText}>{currentPrompt}</p>
               </div>
             </div>
-
-            <div className={styles.card}>
-              <textarea
-                className={styles.textarea}
-                value={promptedText}
-                onChange={(e) => setPromptedText(e.target.value)}
-                placeholder="Respond to the prompt..."
-                rows={10}
-              />
-              <div className={styles.cardFooter}>
-                <span className={styles.charCount}>
-                  {promptedText.length} characters
-                </span>
-                <button
-                  className={styles.saveButton}
-                  disabled={!promptedText.trim()}
-                >
-                  <SendIcon />
-                  Save Entry
-                </button>
-              </div>
-            </div>
+            <NoteEditor
+              title={promptedTitle}
+              body={promptedBody}
+              onTitleChange={handlePromptedTitleChange}
+              onBodyChange={handlePromptedBodyChange}
+              titlePlaceholder="Title"
+              bodyPlaceholder="Body"
+            />
           </section>
         )}
 
-        {/* History */}
         {activeTab === 2 && (
           <section className={styles.content}>
-            {JOURNAL_HISTORY.map((entry) => (
-              <div key={entry.id} className={styles.historyCard}>
+            {history.length === 0 && (
+              <p className={styles.emptyHistory}>No entries yet. Save a note to see it here.</p>
+            )}
+            {history.map((entry) => (
+              <div key={entry.id} className={styles.historyCard} onClick={() => handleHistoryClick(entry)}>
                 <div className={styles.historyHeader}>
-                  <span className={styles.historyType}>{entry.type}</span>
+                  <span className={styles.historyTitle}>{entry.title}</span>
                   <span className={styles.historyMeta}>
                     {entry.date} &middot; {entry.time}
                   </span>
                 </div>
+                <span className={styles.historyType}>{entry.type}</span>
                 <p className={styles.historyPreview}>{entry.preview}</p>
               </div>
             ))}
           </section>
         )}
 
-        {/* Bottom Navigation */}
         <nav className={styles.bottomNav}>
           <ul className={styles.navList}>
             {NAV_ITEMS.map((item) => (
