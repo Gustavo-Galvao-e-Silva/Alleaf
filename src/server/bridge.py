@@ -1,9 +1,10 @@
-import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from cortex import CortexClient, DistanceMetric, Filter, Field
-from embedder import get_embedding # Make sure embedder.py exists in the same folder
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+import time
+from db import client, COLLECTION # Use the shared client
+from embedder import get_embedding
+from langchain_core.messages import HumanMessage, AIMessage
+from agents import research_node, therapist_node, wrap_up_node
 
 app = Flask(__name__)
 CORS(app)
@@ -121,84 +122,35 @@ def save_session():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/agent/end_session', methods=['POST'])
-def end_session():
-    try:
-        data = request.json
-        state = {
-            "user_id": data.get('user_id'),
-            "transcript": [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in data.get('transcript', [])],
-            "evidence": data.get('evidence', []),
-            "exercises": []
-        }
-
-        # We manually trigger the wrap_up_node logic
-        from agents import wrap_up_node
-        result = wrap_up_node(state)
-
-        return jsonify({
-            "exercises": result['exercises'],
-            "status": "completed"
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@app.route('/agent/start', methods=['POST'])
+def start_agent():
+    data = request.json
+    state = {"user_id": data.get('user_id'), "transcript": [], "evidence": []}
+    result = research_node(state)
+    return jsonify({"food_for_thought": result['food_for_thought'], "evidence": result['evidence']})
 
 @app.route('/agent/run_session', methods=['POST'])
 def run_session():
-    try:
-        data = request.json
-        # Convert the JSON transcript back into LangChain Message objects
-        raw_transcript = data.get('transcript', [])
-        formatted_transcript = []
-        for m in raw_transcript:
-            if m['role'] == 'user':
-                formatted_transcript.append(HumanMessage(content=m['content']))
-            else:
-                formatted_transcript.append(AIMessage(content=m['content']))
+    data = request.json
+    # Reconstruct history
+    history = [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in data.get('transcript', [])]
+    history.append(HumanMessage(content=data.get('message')))
+    
+    state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', [])}
+    result = therapist_node(state)
+    
+    return jsonify({
+        "therapy_response": result['transcript'][-1].content,
+        "full_transcript": [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in result['transcript']]
+    })
 
-        state = {
-            "user_id": data.get('user_id'),
-            "transcript": formatted_transcript,
-            "evidence": data.get('evidence', []), # Crucial for context
-            "exercises": []
-        }
-
-        # Add the newest user message to the state
-        state['transcript'].append(HumanMessage(content=data.get('message')))
-
-        from agents import therapist_node
-        result = therapist_node(state)
-
-        # Return the content of the LAST message (the AI response)
-        return jsonify({
-            "therapy_response": result['transcript'][-1].content,
-            "full_transcript": [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in result['transcript']]
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/agent/start', methods=['POST'])
-def start_agent():
-    try:
-        data = request.json
-        user_id = data.get('user_id') # Ensure this matches Next.js key
-
-        state = {
-            "user_id": user_id,
-            "transcript": [],
-            "evidence": [],
-            "food_for_thought": ""
-        }
-
-        from agents import research_node
-        result = research_node(state)
-
-        return jsonify({
-            "food_for_thought": result['food_for_thought'],
-            "evidence": result['evidence']
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@app.route('/agent/end_session', methods=['POST'])
+def end_session():
+    data = request.json
+    history = [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in data.get('transcript', [])]
+    state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', [])}
+    result = wrap_up_node(state)
+    return jsonify({"exercises": result['exercises']})
 
 if __name__ == '__main__':
     app.run(port=5001)
