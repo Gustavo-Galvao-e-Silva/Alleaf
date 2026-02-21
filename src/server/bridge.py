@@ -134,5 +134,32 @@ def save_session():
     # Then client.upsert(...)
     return jsonify({"status": "saved"})
 
+@app.route('/agent/start', methods=['POST'])
+def start_agent():
+    try:
+        data = request.json
+        user_id = data.get('userId') # Next.js sends 'userId'
+
+        # Initialize fresh state for Steps 2-4
+        state = {
+            "user_id": user_id,
+            "session_id": str(int(time.time())),
+            "transcript": [],
+            "evidence": [],
+            "food_for_thought": "",
+            "exercises": []
+        }
+
+        # This triggers the research_node in your graph
+        from agents import research_node
+        result = research_node(state)
+
+        return jsonify({
+            "food_for_thought": result['food_for_thought'],
+            "evidence": result['evidence'] # Step 3 evidence
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(port=5001)
