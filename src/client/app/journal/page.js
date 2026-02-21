@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import styles from "./page.module.css";
 
 const PROMPTS = [
@@ -156,6 +156,13 @@ export default function JournalPage() {
     if (saveLabel) setSaveLabel("");
   };
 
+  useEffect(() => {
+    if (saveLabel === "saved") {
+      const timer = setTimeout(() => setSaveLabel(""), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveLabel]);
+
   const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
   const showSave = isDirty && saveLabel !== "saved";
 
@@ -177,22 +184,24 @@ export default function JournalPage() {
 
     if (editingId) {
       setHistory((prev) => prev.map((h) => (h.id === editingId ? entry : h)));
-      setEditingId(null);
     } else {
       setHistory((prev) => [entry, ...prev]);
     }
     setSaveLabel("saved");
 
-    if (activeTab === 0) {
-      setFreeTitle("");
-      setFreeBody("");
-      setFreeDirty(false);
+    if (!editingId) {
+      if (activeTab === 0) {
+        setFreeTitle("");
+        setFreeBody("");
+      }
+      if (activeTab === 1) {
+        setPromptedTitle("");
+        setPromptedBody("");
+      }
     }
-    if (activeTab === 1) {
-      setPromptedTitle("");
-      setPromptedBody("");
-      setPromptedDirty(false);
-    }
+
+    if (activeTab === 0) setFreeDirty(false);
+    if (activeTab === 1) setPromptedDirty(false);
   };
 
   const handleHistoryClick = (entry) => {
@@ -200,11 +209,11 @@ export default function JournalPage() {
     if (tabIndex === 0) {
       setFreeTitle(entry.title === "Untitled" ? "" : entry.title);
       setFreeBody(entry.body);
-      setFreeDirty(true);
+      setFreeDirty(false);
     } else {
       setPromptedTitle(entry.title === "Untitled" ? "" : entry.title);
       setPromptedBody(entry.body);
-      setPromptedDirty(true);
+      setPromptedDirty(false);
     }
     setEditingId(entry.id);
     setSaveLabel("");
