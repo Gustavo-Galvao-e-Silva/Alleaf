@@ -1,42 +1,74 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from state import TherapySessionState
 
-# Initialize Gemini
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", google_api_key=os.getenv("GEMINI_API_KEY"))
+# Initialize Gemini 1.5 Pro
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-pro", 
+    google_api_key=os.getenv("GEMINI_API_KEY"),
+    temperature=0.7
+)
 
-# 1. The Archivist (Vector Query Agent)
-def archivist_node(state: PatientFile):
-    # This node calls the Bridge to get raw data
-    res = requests.post("http://localhost:5001/agent/search", json={
-        "query": state['current_input'],
-        "user_id": state['user_id']
-    })
-    logs = res.json().get("logs", [])
-    return {"logs_retrieved": logs}
+# --- NODES ---
 
-# 2. The Reasoning Agent (File Builder)
-def reasoning_node(state: PatientFile):
-    context = "\n".join(state['logs_retrieved'])
-    prompt = f"""
-    You are a Clinical Reasoning Agent. 
-    Using these journal logs: {context}
-    Update the 'Patient File' for this user. 
-    Focus on: Triggers, Anxiety Levels, and Coping Success.
-    If information is missing, note it as 'Unknown'.
-    """
-    response = llm.invoke([SystemMessage(content=prompt)])
-    return {"clinical_file": response.content}
-
-# 3. The Master Therapist Agent
-def therapist_node(state: PatientFile):
-    prompt = f"""
-    You are a compassionate Therapist Agent.
-    Use the following Patient File as your Source Truth: {state['clinical_file']}
+def research_node(state: TherapySessionState):
+    """Steps 2-4: Pre-session research & Food for thought"""
+    user_id = state['user_id']
     
-    The user just said: {state['current_input']}
+    # Step 3: Queries to build 'Source Truth'
+    queries = ["current anxiety triggers", "recent sleep patterns", "mood trends"]
+    all_logs = []
     
-    Respond with empathy and use details from their 'File' to guide them.
-    """
+    # Simulated search logic (connects to your Bridge)
+    for q in queries:
+        # Replace with your actual bridge call logic
+        # logs = requests.post("http://localhost:5001/agent/search", json={"query": q, "user_id": user_id})
+        all_logs.append(f"Mock log for {q}: User mentioned feeling tension.")
+
+    # Step 4: Formulate 'Food for Thought'
+    prompt = f"Based on these logs: {all_logs}, provide a gentle, one-sentence 'food for thought' to start a session."
     response = llm.invoke([SystemMessage(content=prompt)])
-    return {"therapy_response": response.content}
+    
+    return {
+        "evidence": all_logs,
+        "food_for_thought": response.content,
+        "transcript": [AIMessage(content=response.content)]
+    }
+
+def therapist_node(state: TherapySessionState):
+    """Step 5-7: The main therapy loop"""
+    system_prompt = f"""
+    You are an AI Therapist for an anxiety support app. 
+    SOURCE TRUTH (User's History): {state['evidence']}
+    
+    Guidelines:
+    1. Be empathetic but professional.
+    2. Reference the 'Source Truth' if relevant (e.g. 'I noticed you logged about...').
+    3. If you need more info to help, ask the user or state you're looking into it.
+    """
+    
+    messages = [SystemMessage(content=system_prompt)] + state['transcript']
+    response = llm.invoke(messages)
+    
+    return {"transcript": state['transcript'] + [response]}
+
+def wrap_up_node(state: TherapySessionState):
+    """Step 8-9: Conversation embedding and Exercise generation"""
+    # Step 9: Structured JSON exercises
+    exercise_prompt = """
+    Based on the session transcript, generate exactly 3 exercises.
+    Format MUST be a valid JSON list of objects:
+    [
+      {"title": "...", "type": "breathing", "content": "..."},
+      {"title": "...", "type": "todo", "content": "..."},
+      {"title": "...", "type": "script", "content": "..."}
+    ]
+    """
+    
+    # We combine the transcript into a string for the exercise generator
+    history = "\n".join([m.content for m in state['transcript']])
+    response = llm.invoke([SystemMessage(content=exercise_prompt), HumanMessage(content=history)])
+    
+    # In Step 8, you'd trigger the bridge to save 'history' to Actian
+    return {"exercises": response.content} # Add JSON parsing here
