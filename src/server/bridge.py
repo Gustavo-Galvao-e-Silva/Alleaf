@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from cortex import CortexClient, DistanceMetric, Filter, Field
+from embedder import get_embedding
 
 app = Flask(__name__)
 CORS(app)
@@ -9,26 +10,36 @@ client = CortexClient("localhost:50051")
 client.connect()
 COLLECTION = "user_journals"
 
-@app.route('/init', methods=['GET'])
-def init():
-    if not client.has_collection(COLLECTION):
-        client.create_collection(name=COLLECTION, dimension=384)
-    return jsonify({"status": "ready"})
-
 @app.route('/upsert', methods=['POST'])
 def upsert():
     data = request.json
-    client.upsert(COLLECTION, id=data['id'], vector=data['vector'], 
-                  payload={"text": data['text'], "user_id": data['user_id']})
+    # Logic moved here: convert text to vector
+    vector = get_embedding(data['text'])
+    
+    client.upsert(
+        COLLECTION, 
+        id=int(data.get('id', time.time())), 
+        vector=vector, 
+        payload={"text": data['text'], "user_id": data['user_id']}
+    )
     client.flush(COLLECTION)
     return jsonify({"success": True})
 
 @app.route('/search', methods=['POST'])
 def search():
     data = request.json
+    # Logic moved here: convert search query to vector
+    vector = get_embedding(data['query'])
+    
     user_filter = Filter().must(Field("user_id").eq(data['user_id']))
-    results = client.search(COLLECTION, query=data['vector'], filter=user_filter, top_k=5, with_payload=True)
-    return jsonify([{"text": r.payload['text'], "score": r.score} for r in results])
+    results = client.search(COLLECTION, query=vector, filter=user_filter, top_k=5)
+    return jsonify([{"text": r.payload['text']} for r in results])
+
+@app.route('/init', methods=['GET'])
+def init():
+    if not client.has_collection(COLLECTION):
+        client.create_collection(name=COLLECTION, dimension=384)
+    return jsonify({"status": "ready"})
 
 # bridge.py updates
 @app.route('/agent/search', methods=['POST'])
