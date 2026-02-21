@@ -67,5 +67,22 @@ def save_chat():
     )
     return jsonify({"success": True})
 
+
+@app.route('/agent/start', methods=['POST'])
+def start_agent():
+    data = request.json
+    # Run the research node specifically
+    initial_state = {"user_id": data['user_id'], "transcript": [], "evidence": []}
+    result = app_agent.invoke(initial_state)
+    return jsonify(result)
+
+@app.route('/journal/save_session', methods=['POST'])
+def save_session():
+    """Step 8: Embed the final conversation and save to Actian."""
+    data = request.json
+    # Here you would use sentence-transformers to embed data['text']
+    # Then client.upsert(...)
+    return jsonify({"status": "saved"})
+
 if __name__ == '__main__':
     app.run(port=5001)
