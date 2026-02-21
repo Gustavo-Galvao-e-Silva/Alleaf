@@ -105,56 +105,6 @@ def save_session():
     # Then client.upsert(...)
     return jsonify({"status": "saved"})
 
-@app.route('/agent/start', methods=['POST'])
-def start_agent():
-    try:
-        data = request.json
-        user_id = data.get('userId') # Next.js sends 'userId'
-
-        # Initialize fresh state for Steps 2-4
-        state = {
-            "user_id": user_id,
-            "session_id": str(int(time.time())),
-            "transcript": [],
-            "evidence": [],
-            "food_for_thought": "",
-            "exercises": []
-        }
-
-        # This triggers the research_node in your graph
-        from agents import research_node
-        result = research_node(state)
-
-        return jsonify({
-            "food_for_thought": result['food_for_thought'],
-            "evidence": result['evidence'] # Step 3 evidence
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/agent/run_session', methods=['POST'])
-def run_session():
-    try:
-        data = request.json
-        # The frontend needs to send the full transcript and evidence back
-        state = {
-            "user_id": data.get('user_id'),
-            "transcript": [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in data.get('transcript', [])],
-            "evidence": data.get('evidence', []),
-            "exercises": []
-        }
-
-        # Add the newest message
-        state['transcript'].append(HumanMessage(content=data.get('message')))
-
-        from agents import therapist_node
-        result = therapist_node(state)
-
-        return jsonify({
-            "therapy_response": result['transcript'][-1].content,
-            "full_transcript": [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in result['transcript']]
-        })
-
 @app.route('/journal/save_session', methods=['POST'])
 def save_session():
     try:
@@ -197,6 +147,63 @@ def end_session():
         return jsonify({
             "exercises": result['exercises'],
             "status": "completed"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/agent/run_session', methods=['POST'])
+def run_session():
+    try:
+        data = request.json
+        # Convert the JSON transcript back into LangChain Message objects
+        raw_transcript = data.get('transcript', [])
+        formatted_transcript = []
+        for m in raw_transcript:
+            if m['role'] == 'user':
+                formatted_transcript.append(HumanMessage(content=m['content']))
+            else:
+                formatted_transcript.append(AIMessage(content=m['content']))
+
+        state = {
+            "user_id": data.get('user_id'),
+            "transcript": formatted_transcript,
+            "evidence": data.get('evidence', []), # Crucial for context
+            "exercises": []
+        }
+
+        # Add the newest user message to the state
+        state['transcript'].append(HumanMessage(content=data.get('message')))
+
+        from agents import therapist_node
+        result = therapist_node(state)
+
+        # Return the content of the LAST message (the AI response)
+        return jsonify({
+            "therapy_response": result['transcript'][-1].content,
+            "full_transcript": [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in result['transcript']]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/agent/start', methods=['POST'])
+def start_agent():
+    try:
+        data = request.json
+        user_id = data.get('user_id') # Ensure this matches Next.js key
+
+        state = {
+            "user_id": user_id,
+            "transcript": [],
+            "evidence": [],
+            "food_for_thought": ""
+        }
+
+        from agents import research_node
+        result = research_node(state)
+
+        return jsonify({
+            "food_for_thought": result['food_for_thought'],
+            "evidence": result['evidence']
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
