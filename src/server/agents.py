@@ -11,7 +11,7 @@ from tools import search_user_history
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY"),
-    temperature=0.7
+    temperature=0.4
 )
 tools = [search_user_history]
 llm_with_tools = llm.bind_tools(tools)
