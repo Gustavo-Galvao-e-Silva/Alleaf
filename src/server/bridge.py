@@ -1,7 +1,8 @@
+import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from cortex import CortexClient, DistanceMetric, Filter, Field
-from embedder import get_embedding
+from embedder import get_embedding # Make sure embedder.py exists in the same folder
 
 app = Flask(__name__)
 CORS(app)
@@ -12,28 +13,43 @@ COLLECTION = "user_journals"
 
 @app.route('/upsert', methods=['POST'])
 def upsert():
-    data = request.json
-    # Logic moved here: convert text to vector
-    vector = get_embedding(data['text'])
-    
-    client.upsert(
-        COLLECTION, 
-        id=int(data.get('id', time.time())), 
-        vector=vector, 
-        payload={"text": data['text'], "user_id": data['user_id']}
-    )
-    client.flush(COLLECTION)
-    return jsonify({"success": True})
+    try:
+        data = request.json
+        # 1. Always generate the vector on the backend
+        vector = get_embedding(data['text'])
+
+        # 2. Force ID to integer (critical for Actian)
+        entry_id = int(data.get('id', time.time()))
+
+        client.upsert(
+            COLLECTION,
+            id=entry_id,
+            vector=vector,
+            payload={
+                "text": data['text'],
+                "user_id": data['user_id'],
+                "type": "journal_entry"
+            }
+        )
+        client.flush(COLLECTION)
+        return jsonify({"success": True, "id": entry_id})
+    except Exception as e:
+        print(f"UPSERT ERROR: {e}") # This will show up in your bridge terminal
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/search', methods=['POST'])
 def search():
-    data = request.json
-    # Logic moved here: convert search query to vector
-    vector = get_embedding(data['query'])
-    
-    user_filter = Filter().must(Field("user_id").eq(data['user_id']))
-    results = client.search(COLLECTION, query=vector, filter=user_filter, top_k=5)
-    return jsonify([{"text": r.payload['text']} for r in results])
+    try:
+        data = request.json
+        # Generate vector for the query string
+        vector = get_embedding(data['query'])
+        
+        user_filter = Filter().must(Field("user_id").eq(data['user_id']))
+        results = client.search(COLLECTION, query=vector, filter=user_filter, top_k=5, with_payload=True)
+        
+        return jsonify([{"text": r.payload['text']} for r in results])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/init', methods=['GET'])
 def init():
