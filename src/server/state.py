@@ -1,11 +1,16 @@
-from typing import TypedDict, List, Annotated
-from operator import add
+from typing import TypedDict, List, Union
+from langchain_core.messages import BaseMessage
 
 class TherapySessionState(TypedDict):
     user_id: str
     session_id: str
-    transcript: List[dict] # The back-and-forth chat
-    evidence: List[str]    # Raw journal logs found by the agent
-    patient_file: str      # The "Case File" synthesized from logs
-    food_for_thought: str  # The opening prompt
-    exercises: List[dict]  # Step 9: The 3 final activities
+    # Step 5: The living conversation
+    transcript: List[BaseMessage]
+    # Step 3: Raw evidence retrieved from Actian
+    evidence: List[str]
+    # Step 4: The opening reflection
+    food_for_thought: str
+    # Step 9: The final 3 activities
+    exercises: List[dict]
+    # Internal counter for reasoning loops
+    iteration_count: int
