@@ -30,5 +30,26 @@ def search():
     results = client.search(COLLECTION, query=data['vector'], filter=user_filter, top_k=5, with_payload=True)
     return jsonify([{"text": r.payload['text'], "score": r.score} for r in results])
 
+# bridge.py updates
+@app.route('/agent/search', methods=['POST'])
+def agent_search():
+    data = request.json
+    # The Reasoning Agent will send a "query_string" like
+    # "Find instances where the user mentions physical panic symptoms"
+    query_text = data.get("query")
+    user_id = data.get("user_id")
+
+    # For the agent to work, we handle the embedding conversion here
+    # Use your existing pipeline or a utility function
+    vector = generate_embedding(query_text)
+
+    results = client.search(
+        COLLECTION,
+        query=vector,
+        filter=Filter().must(Field("user_id").eq(user_id)),
+        top_k=8
+    )
+    return jsonify({"logs": [r.payload['text'] for r in results]})
+
 if __name__ == '__main__':
     app.run(port=5001)
