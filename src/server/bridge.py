@@ -97,35 +97,6 @@ def save_chat():
 
 from graph import app_agent # Import the compiled LangGraph
 
-@app.route('/agent/run_session', methods=['POST'])
-def run_session():
-    try:
-        data = request.json
-        user_id = data.get('user_id')
-        user_message = data.get('message')
-
-        # To avoid the 'contents' error, check if this is a NEW session or a CHAT
-        # For a CHAT, we skip research and go straight to therapist_node
-
-        state = {
-            "user_id": user_id,
-            "transcript": [HumanMessage(content=user_message)],
-            "evidence": data.get('evidence', []), # Pass evidence back from frontend if possible
-            "exercises": []
-        }
-
-        # Instead of running the whole graph, just call the therapist node logic
-        from agents import therapist_node
-        result = therapist_node(state)
-
-        return jsonify({
-            "therapy_response": result['transcript'][-1].content,
-            "status": "success"
-        })
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/journal/save_session', methods=['POST'])
 def save_session():
     """Step 8: Embed the final conversation and save to Actian."""
@@ -160,6 +131,29 @@ def start_agent():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/agent/run_session', methods=['POST'])
+def run_session():
+    try:
+        data = request.json
+        # The frontend needs to send the full transcript and evidence back
+        state = {
+            "user_id": data.get('user_id'),
+            "transcript": [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in data.get('transcript', [])],
+            "evidence": data.get('evidence', []),
+            "exercises": []
+        }
+
+        # Add the newest message
+        state['transcript'].append(HumanMessage(content=data.get('message')))
+
+        from agents import therapist_node
+        result = therapist_node(state)
+
+        return jsonify({
+            "therapy_response": result['transcript'][-1].content,
+            "full_transcript": [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in result['transcript']]
+        })
 
 if __name__ == '__main__':
     app.run(port=5001)
