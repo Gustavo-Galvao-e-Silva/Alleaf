@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from cortex import CortexClient, DistanceMetric, Filter, Field
 from embedder import get_embedding # Make sure embedder.py exists in the same folder
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 app = Flask(__name__)
 CORS(app)
