@@ -106,7 +106,7 @@ const Composer = () => {
       data-empty={isEmpty}
       data-running={isRunning}
     >
-      <div className="overflow-hidden rounded-[28px] bg-white shadow-sm ring-1 ring-black/[0.06] ring-inset transition-shadow focus-within:ring-black/[0.12]">
+      <div className="overflow-hidden rounded-[10px] bg-white shadow-sm ring-1 ring-black/[0.06] ring-inset transition-shadow focus-within:ring-black/[0.12]">
         <AuiIf condition={(s) => s.composer.attachments.length > 0}>
           <div className="flex flex-row flex-wrap gap-2 px-4 pt-3">
             <ComposerPrimitive.Attachments
