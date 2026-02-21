@@ -7,3 +7,6 @@ __pycache__/
 
 # MacOS stuff
 .DS_Store
+
+#cursor
+.cursor/
