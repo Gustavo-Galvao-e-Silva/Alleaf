@@ -1,11 +1,11 @@
 from typing import TypedDict, List, Annotated
 from operator import add
 
-class PatientFile(TypedDict):
-    # This represents the "State" of the therapy session
+class TherapySessionState(TypedDict):
     user_id: str
-    current_input: str
-    clinical_file: str # The "Source Truth" file we build from journals
-    therapy_response: str
-    logs_retrieved: List[str]
-    iteration_count: int
+    session_id: str
+    transcript: List[dict] # The back-and-forth chat
+    evidence: List[str]    # Raw journal logs found by the agent
+    patient_file: str      # The "Case File" synthesized from logs
+    food_for_thought: str  # The opening prompt
+    exercises: List[dict]  # Step 9: The 3 final activities
