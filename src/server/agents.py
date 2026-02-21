@@ -1,17 +1,20 @@
 import os
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from state import TherapySessionState
 from embedder import get_embedding
 import db 
 from cortex import Filter, Field
+from tools import search_user_history
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY"),
     temperature=0.7
 )
+tools = [search_user_history]
+llm_with_tools = llm.bind_tools(tools)
 
 def research_node(state: TherapySessionState):
     user_id = state.get('user_id')
