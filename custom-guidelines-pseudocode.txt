@@ -1,0 +1,11 @@
+if session_notes: 
+	custom_guidelines = get_cg("aklsdjfkljasdf", "fasdfasdjf")
+else:
+	
+	custom_guidelines = get_cg("aklsdjfkljasdf")
+
+get_cg(general_guidelines, session_notes = "") -> str:
+ return custom_guidelines
+
+
+systemp = f"{custom-guidelines}"
