@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import styles from "./page.module.css";
+import BottomNav from "../components/BottomNav";
 
 const PROMPTS = [
   "What are three things you're grateful for today?",
@@ -19,62 +20,6 @@ function formatDateTime() {
 }
 
 const TABS = ["Free Writing", "Prompted", "History"];
-
-const NAV_ITEMS = [
-  {
-    id: "home",
-    label: "Home",
-    href: "/",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "journal",
-    label: "Journal",
-    href: "/journal",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-        <path d="M6.5 2A2.5 2.5 0 004 4.5v15A2.5 2.5 0 006.5 22H20V2H6.5zM6 19.5V5h12v14H6.5a1 1 0 000 2H18v-1.5H6z" />
-      </svg>
-    ),
-  },
-  {
-    id: "chat",
-    label: "Chat",
-    href: "/chat",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "data",
-    label: "Data",
-    href: "/data",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="18" y1="20" x2="18" y2="10" />
-        <line x1="12" y1="20" x2="12" y2="4" />
-        <line x1="6" y1="20" x2="6" y2="14" />
-      </svg>
-    ),
-  },
-  {
-    id: "profile",
-    label: "Profile",
-    href: "/profile",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    ),
-  },
-];
 
 function SparkleIcon() {
   return (
@@ -310,22 +255,7 @@ export default function JournalPage() {
           </section>
         )}
 
-        <nav className={styles.bottomNav}>
-          <ul className={styles.navList}>
-            {NAV_ITEMS.map((item) => (
-              <li key={item.id}>
-                <a
-                  href={item.href}
-                  className={styles.navItem}
-                  data-active={item.id === "journal" ? "true" : undefined}
-                >
-                  <span className={styles.navIcon}>{item.icon}</span>
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <BottomNav activeItem="journal" />
       </main>
     </>
   );

@@ -1,115 +1,619 @@
 "use client";
 
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AssistantRuntimeProvider,
+  useAuiState,
+  useThreadRuntime,
+} from "@assistant-ui/react";
+import { Orb } from "@/components/ui/orb"
+import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
+
+
 import {
   useChatRuntime,
   AssistantChatTransport,
 } from "@assistant-ui/react-ai-sdk";
 import { Thread } from "@/components/assistant-ui/thread";
+import BottomNav from "../components/BottomNav";
 import styles from "./page.module.css";
 
-const NAV_ITEMS = [
-  {
-    id: "home",
-    label: "Home",
-    href: "/",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "journal",
-    label: "Journal",
-    href: "/journal",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "chat",
-    label: "Chat",
-    href: "/chat",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "data",
-    label: "Data",
-    href: "/data",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="18" y1="20" x2="18" y2="10" />
-        <line x1="12" y1="20" x2="12" y2="4" />
-        <line x1="6" y1="20" x2="6" y2="14" />
-      </svg>
-    ),
-  },
-  {
-    id: "profile",
-    label: "Profile",
-    href: "/profile",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    ),
-  },
-];
+const ORB_COLORS = ["#9ed7ae", "#2f6f4a"];
+const ORB_OPACITY = 0.76;
+const INPUT_LEVEL_SENSITIVITY = 5;
+const MIN_OUTPUT_LEVEL = 0.28;
+const OUTPUT_LEVEL_BOOST = 0.72;
+
+function useVoiceLevels(isActive) {
+  const inputLevelRef = useRef(0);
+  const outputLevelRef = useRef(0);
+
+  const getInputVolume = useCallback(() => inputLevelRef.current, []);
+  const getOutputVolume = useCallback(() => outputLevelRef.current, []);
+
+  useEffect(() => {
+    if (!isActive) {
+      inputLevelRef.current = 0;
+      outputLevelRef.current = 0;
+      return;
+    }
+
+    if (
+      typeof window === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      return;
+    }
+
+    const AudioContextImpl = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextImpl) {
+      return;
+    }
+
+    let cancelled = false;
+    let rafId = 0;
+    let stream;
+    let source;
+    let analyser;
+    let audioContext;
+    let data;
+
+    const updateLevels = () => {
+      if (cancelled || !analyser || !data) return;
+
+      analyser.getByteTimeDomainData(data);
+
+      let energy = 0;
+      for (let index = 0; index < data.length; index += 1) {
+        const sample = (data[index] - 128) / 128;
+        energy += sample * sample;
+      }
+
+      const rms = Math.sqrt(energy / data.length);
+      const inputLevel = Math.min(1, rms * INPUT_LEVEL_SENSITIVITY);
+      const outputTarget = Math.min(
+        1,
+        MIN_OUTPUT_LEVEL + inputLevel * OUTPUT_LEVEL_BOOST,
+      );
+
+      inputLevelRef.current += (inputLevel - inputLevelRef.current) * 0.35;
+      outputLevelRef.current += (outputTarget - outputLevelRef.current) * 0.25;
+
+      rafId = window.requestAnimationFrame(updateLevels);
+    };
+
+    const startMonitoring = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        audioContext = new AudioContextImpl();
+        source = audioContext.createMediaStreamSource(stream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.45;
+        source.connect(analyser);
+        data = new Uint8Array(analyser.fftSize);
+        updateLevels();
+      } catch {
+        inputLevelRef.current = 0;
+        outputLevelRef.current = 0;
+      }
+    };
+
+    startMonitoring();
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(rafId);
+      analyser?.disconnect();
+      source?.disconnect();
+      stream?.getTracks().forEach((track) => track.stop());
+      if (audioContext && audioContext.state !== "closed") {
+        audioContext.close().catch(() => {});
+      }
+      inputLevelRef.current = 0;
+      outputLevelRef.current = 0;
+    };
+  }, [isActive]);
+
+  return { getInputVolume, getOutputVolume };
+}
+
+function VoiceInputController({
+  isVoiceRunning,
+  onVoiceInputError,
+  onAwaitingResponseChange,
+}) {
+  const threadRuntime = useThreadRuntime();
+  const isThreadRunning = useAuiState((state) => state.thread.isRunning);
+  const recognitionRef = useRef(null);
+  const isListeningRef = useRef(false);
+  const hasValidatedAgentRef = useRef(false);
+
+  useEffect(() => {
+    onAwaitingResponseChange?.(Boolean(isVoiceRunning && isThreadRunning));
+  }, [isVoiceRunning, isThreadRunning, onAwaitingResponseChange]);
+
+  useEffect(() => {
+    if (!isVoiceRunning || hasValidatedAgentRef.current) return;
+
+    let isCancelled = false;
+
+    const validateAgent = async () => {
+      try {
+        const response = await fetch("/api/elevenlabs/signed-url", {
+          method: "GET",
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.error || "Failed to validate ElevenLabs agent");
+        }
+
+        hasValidatedAgentRef.current = true;
+      } catch (error) {
+        if (isCancelled) return;
+        onVoiceInputError?.(
+          error instanceof Error
+            ? error.message
+            : "Failed to initialize ElevenLabs voice mode",
+        );
+      }
+    };
+
+    validateAgent();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isVoiceRunning, onVoiceInputError]);
+
+  useEffect(() => {
+    const recognition = recognitionRef.current;
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      try {
+        recognition.stop();
+      } catch {}
+      recognitionRef.current = null;
+      isListeningRef.current = false;
+    }
+
+    if (!isVoiceRunning || isThreadRunning || typeof window === "undefined") {
+      return;
+    }
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      onVoiceInputError?.("Voice input is not supported in this browser.");
+      return;
+    }
+
+    const nextRecognition = new SpeechRecognition();
+    nextRecognition.continuous = true;
+    nextRecognition.interimResults = false;
+    nextRecognition.maxAlternatives = 1;
+    nextRecognition.lang = "en-US";
+
+    nextRecognition.onresult = (event) => {
+      let finalText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        if (!result?.isFinal) continue;
+        const transcript = result[0]?.transcript;
+        if (typeof transcript === "string" && transcript.trim()) {
+          finalText += `${transcript.trim()} `;
+        }
+      }
+
+      const text = finalText.trim();
+      if (!text) return;
+
+      isListeningRef.current = false;
+      try {
+        nextRecognition.stop();
+      } catch {}
+
+      Promise.resolve(
+        threadRuntime.append({
+          role: "user",
+          content: [{ type: "text", text }],
+        }),
+      ).catch(() => {
+        onVoiceInputError?.("Failed to send voice transcription.");
+      });
+    };
+
+    nextRecognition.onerror = (event) => {
+      const errorCode = event?.error;
+      if (errorCode === "aborted") return;
+      if (errorCode === "not-allowed" || errorCode === "service-not-allowed") {
+        isListeningRef.current = false;
+        onVoiceInputError?.("Microphone permission was denied.");
+        return;
+      }
+      if (errorCode === "audio-capture") {
+        isListeningRef.current = false;
+        onVoiceInputError?.("No microphone input was detected.");
+      }
+    };
+
+    nextRecognition.onend = () => {
+      if (!isListeningRef.current) return;
+      try {
+        nextRecognition.start();
+      } catch {}
+    };
+
+    recognitionRef.current = nextRecognition;
+    isListeningRef.current = true;
+
+    try {
+      nextRecognition.start();
+    } catch {
+      isListeningRef.current = false;
+      onVoiceInputError?.("Unable to start voice input.");
+    }
+
+    return () => {
+      isListeningRef.current = false;
+      nextRecognition.onresult = null;
+      nextRecognition.onerror = null;
+      nextRecognition.onend = null;
+      try {
+        nextRecognition.stop();
+      } catch {}
+      if (recognitionRef.current === nextRecognition) {
+        recognitionRef.current = null;
+      }
+    };
+  }, [isVoiceRunning, isThreadRunning, onVoiceInputError, threadRuntime]);
+
+  return null;
+}
+
+function extractAssistantText(message) {
+  if (!message || message.role !== "assistant") return "";
+
+  const chunks = [];
+
+  if (typeof message.content === "string") {
+    chunks.push(message.content);
+  }
+
+  if (Array.isArray(message.content)) {
+    for (const part of message.content) {
+      if (part && typeof part.text === "string") {
+        chunks.push(part.text);
+      }
+    }
+  }
+
+  if (Array.isArray(message.parts)) {
+    for (const part of message.parts) {
+      if (part?.type === "text" && typeof part.text === "string") {
+        chunks.push(part.text);
+      }
+    }
+  }
+
+  return chunks.join("\n").replace(/\s+/g, " ").trim();
+}
+
+function VoiceOutputController({ isVoiceRunning, onVoiceOutputError }) {
+  const messages = useAuiState((state) => state.thread.messages);
+  const isThreadRunning = useAuiState((state) => state.thread.isRunning);
+
+  const spokenMessageIdsRef = useRef(new Set());
+  const lastSpokenSignatureRef = useRef("");
+  const queueRef = useRef([]);
+  const isPlayingRef = useRef(false);
+  const currentAudioRef = useRef(null);
+
+  const stopCurrentPlayback = useCallback(() => {
+    queueRef.current = [];
+    isPlayingRef.current = false;
+
+    const activeAudio = currentAudioRef.current;
+    if (activeAudio) {
+      activeAudio.onended = null;
+      activeAudio.onerror = null;
+      activeAudio.pause();
+      activeAudio.src = "";
+      currentAudioRef.current = null;
+    }
+
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
+
+  const playViaSpeechSynthesis = useCallback((text) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return false;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+    return true;
+  }, []);
+
+  const playFromElevenLabs = useCallback(async (text) => {
+    const response = await fetch("/api/elevenlabs/speak", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) {
+      const details = await response.json().catch(() => ({}));
+      throw new Error(details?.error || "Failed to fetch ElevenLabs audio");
+    }
+
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+
+    await new Promise((resolve, reject) => {
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        resolve();
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        reject(new Error("Audio playback failed"));
+      };
+
+      audio.play().catch((error) => {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        reject(error);
+      });
+    });
+  }, []);
+
+  const processQueue = useCallback(async () => {
+    if (isPlayingRef.current) return;
+    if (!isVoiceRunning) return;
+
+    const nextItem = queueRef.current.shift();
+    if (!nextItem) return;
+
+    isPlayingRef.current = true;
+    try {
+      try {
+        await playFromElevenLabs(nextItem.text);
+      } catch {
+        const fallbackUsed = playViaSpeechSynthesis(nextItem.text);
+        if (!fallbackUsed) {
+          onVoiceOutputError?.("Unable to play agent voice response.");
+        }
+      }
+      lastSpokenSignatureRef.current = nextItem.signature;
+    } finally {
+      isPlayingRef.current = false;
+      if (queueRef.current.length > 0) {
+        processQueue();
+      }
+    }
+  }, [isVoiceRunning, onVoiceOutputError, playFromElevenLabs, playViaSpeechSynthesis]);
+
+  useEffect(() => {
+    if (isVoiceRunning) return;
+    stopCurrentPlayback();
+  }, [isVoiceRunning, stopCurrentPlayback]);
+
+  useEffect(() => {
+    return () => {
+      stopCurrentPlayback();
+    };
+  }, [stopCurrentPlayback]);
+
+  useEffect(() => {
+    if (!isVoiceRunning || isThreadRunning || !Array.isArray(messages)) return;
+
+    const index = messages.length - 1;
+    const message = messages[index];
+    if (!message || message.role !== "assistant") return;
+
+    const text = extractAssistantText(message);
+    if (!text) return;
+
+    const messageId = message.id || `assistant-${index}`;
+    const signature = `${messageId}:${text}`;
+
+    if (lastSpokenSignatureRef.current === signature) return;
+    if (spokenMessageIdsRef.current.has(messageId)) return;
+    if (queueRef.current.some((item) => item.signature === signature)) return;
+
+    spokenMessageIdsRef.current.add(messageId);
+    queueRef.current.push({
+      signature,
+      text,
+    });
+    processQueue();
+  }, [isVoiceRunning, isThreadRunning, messages, processQueue]);
+
+  return null;
+}
 
 export default function ChatPage() {
+  const [isVoiceOpen, setIsVoiceOpen] = useState(false);
+  const [isVoiceRunning, setIsVoiceRunning] = useState(false);
+  const [isVoiceAwaitingResponse, setIsVoiceAwaitingResponse] = useState(false);
+  const [isMiniOrbSettled, setIsMiniOrbSettled] = useState(false);
+  const [voiceInputError, setVoiceInputError] = useState("");
+  const { getInputVolume, getOutputVolume } = useVoiceLevels(isVoiceRunning);
+  const voiceOrbLayoutId = "voice-orb";
+
+  const handleVoiceInputError = useCallback((message) => {
+    setVoiceInputError(message);
+    setIsVoiceRunning(false);
+  }, []);
+
+  const handleVoiceOutputError = useCallback((message) => {
+    setVoiceInputError(message);
+  }, []);
+
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
       api: "/api/chat",
+      body: {
+        input_mode: "text",
+      },
     }),
   });
+
+  const openVoiceMode = () => {
+    setVoiceInputError("");
+    setIsMiniOrbSettled(false);
+    setIsVoiceOpen(true);
+    setIsVoiceRunning(true);
+  };
+
+  const stopVoiceMode = () => {
+    setIsVoiceRunning(false);
+    setIsVoiceAwaitingResponse(false);
+  };
+
+  const handleOrbClick = () => {
+    setVoiceInputError("");
+    if (!isVoiceOpen) {
+      openVoiceMode();
+      return;
+    }
+    setIsVoiceRunning(true);
+  };
 
   return (
     <>
       <div className={styles.bg} aria-hidden="true" />
       <main className={styles.page}>
-        <header className={styles.header}>
-          <div className={styles.headerIcon}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2l1.5 6.5L20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2z" />
-            </svg>
-          </div>
-          <div>
-            <h1 className={styles.title}>Wellness Chat</h1>
-            <p className={styles.subtitle}>Your mindful companion</p>
-          </div>
-        </header>
+        <LayoutGroup id="voice-orb-layout">
+          <div
+            className={`${styles.chatContainer} ${
+              isVoiceOpen ? styles.chatContainerOpen : ""
+            }`}
+          >
+            <div className={styles.chatPanel}>
+              <AssistantRuntimeProvider runtime={runtime}>
+                <VoiceInputController
+                  isVoiceRunning={isVoiceRunning}
+                  onVoiceInputError={handleVoiceInputError}
+                  onAwaitingResponseChange={setIsVoiceAwaitingResponse}
+                />
+                <VoiceOutputController
+                  isVoiceRunning={isVoiceRunning}
+                  onVoiceOutputError={handleVoiceOutputError}
+                />
+                <Thread
+                  isVoiceOpen={isVoiceOpen}
+                  isVoiceRunning={isVoiceRunning}
+                  onStopVoice={stopVoiceMode}
+                  onStartVoice={handleOrbClick}
+                  voiceControl={
+                    isVoiceOpen ? (
+                      <AnimatePresence initial={false}>
+                        {isVoiceRunning ? (
+                          <motion.div
+                            key="voice-running"
+                            className={styles.voiceControlRow}
+                            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -4, scale: 0.92 }}
+                            transition={{ duration: 0.16, ease: "easeOut" }}
+                          >
+                            <div className={styles.voiceControlState}>
+                              {!isMiniOrbSettled ? (
+                                <motion.div
+                                  layoutId={voiceOrbLayoutId}
+                                  transition={{ type: "spring", stiffness: 340, damping: 32 }}
+                                  className={styles.voiceControlOrbPlaceholder}
+                                  onLayoutAnimationComplete={() => setIsMiniOrbSettled(true)}
+                                />
+                              ) : null}
+                              <button
+                                type="button"
+                                className={`${styles.voiceControlOrbButton} ${
+                                  !isMiniOrbSettled ? styles.voiceControlOrbButtonHidden : ""
+                                }`}
+                                onClick={handleOrbClick}
+                                aria-label="Resume voice mode"
+                              >
+                                <Orb
+                                  className={styles.orb}
+                                  style={{ opacity: ORB_OPACITY }}
+                                  colors={ORB_COLORS}
+                                  agentState={isVoiceAwaitingResponse ? "thinking" : "listening"}
+                                  volumeMode={isVoiceAwaitingResponse ? "auto" : "manual"}
+                                  getInputVolume={getInputVolume}
+                                  getOutputVolume={getOutputVolume}
+                                />
+                              </button>
+                            </div>
+                          </motion.div>
+                        ) : null}
+                      </AnimatePresence>
+                    ) : null
+                  }
+                />
+                {voiceInputError ? (
+                  <p className={styles.voiceError}>{voiceInputError}</p>
+                ) : null}
+              </AssistantRuntimeProvider>
+            </div>
 
-        <div className={styles.chatContainer}>
-          <AssistantRuntimeProvider runtime={runtime}>
-            <Thread />
-          </AssistantRuntimeProvider>
-        </div>
-
-        <nav className={styles.bottomNav}>
-          <ul className={styles.navList}>
-            {NAV_ITEMS.map((item) => (
-              <li key={item.id}>
-                <a
-                  href={item.href}
-                  className={styles.navItem}
-                  data-active={item.id === "chat" ? "true" : undefined}
+            <AnimatePresence initial={false}>
+              {!isVoiceOpen ? (
+                <motion.div
+                  key="orb-launch"
+                  className={styles.orbLaunch}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  <span className={styles.navIcon}>{item.icon}</span>
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+                  <motion.button
+                    layoutId={voiceOrbLayoutId}
+                    transition={{ type: "spring", stiffness: 340, damping: 32 }}
+                    type="button"
+                    className={styles.voiceOrbButton}
+                    onClick={handleOrbClick}
+                    aria-label="Start voice mode"
+                  >
+                    <Orb
+                      className={styles.orb}
+                      style={{ opacity: ORB_OPACITY }}
+                      colors={ORB_COLORS}
+                      agentState={null}
+                    />
+                  </motion.button>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        </LayoutGroup>
+
+        <BottomNav activeItem="chat" />
       </main>
     </>
   );
