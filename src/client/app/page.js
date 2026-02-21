@@ -172,8 +172,8 @@ export default function Home() {
         <ul className={styles.navList}>
           {NAV_ITEMS.map((item) => (
             <li key={item.id}>
-              <a
-                href={item.id === "journal" ? "/journal" : "#"}
+                <a
+                href={item.id === "journal" ? "/journal" : item.id === "chat" ? "/chat" : "#"}
                 className={styles.navItem}
                 data-active={item.id === "home" ? "true" : undefined}
               >
