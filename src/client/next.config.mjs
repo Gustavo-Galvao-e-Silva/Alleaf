@@ -1,5 +1,7 @@
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: { serverComponentsExternalPackages: ['@xenova/transformers'] },
+  serverExternalPackages: ['@xenova/transformers'],
 };
+
 export default nextConfig;
