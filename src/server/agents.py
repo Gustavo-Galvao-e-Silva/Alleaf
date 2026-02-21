@@ -8,7 +8,7 @@ import db
 from cortex import Filter, Field
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-pro",
+    model="gemini-2.0-flash", 
     google_api_key=os.getenv("GEMINI_API_KEY"),
     temperature=0.7
 )
@@ -33,12 +33,17 @@ def research_node(state: TherapySessionState):
     unique_evidence = list(set(all_evidence))
     evidence_context = "\n".join([f"- {text}" for text in unique_evidence]) if unique_evidence else "No recent logs."
 
-    prompt = f"PATIENT LOGS:\n{evidence_context}\n\nTask: Write a brief, empathetic therapist opening message."
-    
+    # FIX: Explicit list structure for LangChain Google adapter
+    messages = [
+        SystemMessage(content="You are a compassionate AI therapist."),
+        HumanMessage(content=f"Review these logs and write a 1-2 sentence empathetic opening referencing a recurring theme: {evidence_context}")
+    ]
+
     try:
-        response = llm.invoke([SystemMessage(content=prompt)])
+        response = llm.invoke(messages)
         fft = response.content
-    except:
+    except Exception as e:
+        print(f"LLM ERROR in research_node: {e}")
         fft = "I'm glad you're here today. How are things feeling?"
 
     return {
@@ -49,18 +54,30 @@ def research_node(state: TherapySessionState):
 
 def therapist_node(state: TherapySessionState):
     evidence_str = "\n".join(state.get('evidence', []))
-    system_prompt = f"You are an AI therapist. Context: {evidence_str}"
+    system_prompt = f"You are a professional AI therapist. Ground your responses in this patient history: {evidence_str}"
+    
+    # Reconstruct the full message list for Gemini
     messages = [SystemMessage(content=system_prompt)] + state['transcript']
-    response = llm.invoke(messages)
-    return {"transcript": state['transcript'] + [response]}
+    
+    try:
+        response = llm.invoke(messages)
+        return {"transcript": state['transcript'] + [response]}
+    except Exception as e:
+        print(f"Therapist Node LLM Error: {e}")
+        return {"transcript": state['transcript'] + [AIMessage(content="I'm here for you. Tell me more about that.")]}
 
 def wrap_up_node(state: TherapySessionState):
-    exercise_prompt = "Generate 3 exercises (breathing, todo, script) in a JSON list."
-    history = "\n".join([m.content for m in state['transcript']])
+    exercise_prompt = "Generate 3 exercises (breathing, todo, script) in a JSON list format."
+    history = "\n".join([f"{'User' if isinstance(m, HumanMessage) else 'Therapist'}: {m.content}" for m in state['transcript']])
+    
     try:
-        response = llm.invoke([SystemMessage(content=exercise_prompt), HumanMessage(content=history)])
+        response = llm.invoke([
+            SystemMessage(content=exercise_prompt), 
+            HumanMessage(content=f"Session history:\n{history}")
+        ])
         clean_json = response.content.replace('```json', '').replace('```', '').strip()
         exercises = json.loads(clean_json)
-    except:
+    except Exception as e:
+        print(f"Wrap Up Error: {e}")
         exercises = []
     return {"exercises": exercises}
