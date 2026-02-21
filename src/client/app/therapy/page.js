@@ -82,15 +82,15 @@ export default function TherapyPage() {
     }
   };
 
-  // STEP 7: Wrap up and trigger JSON Exercise generation in wrap_up_node
-  const finishSession = async () => {
+    const finishSession = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5001/agent/end_session', {
+      // Create a proxy for this in /api/therapy/end/route.js or hit bridge via proxy
+      const res = await fetch('/api/therapy/end', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: 'horyzon',
+          userId: 'horyzon',
           transcript: chat,
           evidence: session.evidence
         })
