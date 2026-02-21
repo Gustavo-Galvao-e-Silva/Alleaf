@@ -51,5 +51,21 @@ def agent_search():
     )
     return jsonify({"logs": [r.payload['text'] for r in results]})
 
+@app.route('/journal/save_chat', methods=['POST'])
+def save_chat():
+    data = request.json
+    # We save the summary of the chat as a new "memory"
+    client.upsert(
+        COLLECTION,
+        id=int(time.time()),
+        vector=data['vector'],
+        payload={
+            "text": data['full_transcript'],
+            "user_id": data['user_id'],
+            "type": "session_summary" # Distinguished from daily logs
+        }
+    )
+    return jsonify({"success": True})
+
 if __name__ == '__main__':
     app.run(port=5001)
