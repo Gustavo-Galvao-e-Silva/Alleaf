@@ -69,7 +69,7 @@ def agent_search():
 
     # For the agent to work, we handle the embedding conversion here
     # Use your existing pipeline or a utility function
-    vector = generate_embedding(query_text)
+    vector = get_embedding(query_text) #
 
     results = client.search(
         COLLECTION,
