@@ -4,6 +4,8 @@ __pycache__/
 
 # Environment variables
 .env
+.env.local
+.env.*.local
 
 # MacOS stuff
 .DS_Store
@@ -11,5 +13,13 @@ __pycache__/
 #cursor
 .cursor/
 
+#test files
+test/
+
+#inspector
+.inspector.json
+
+# ElevenLabs local agent implementation
+src/client/app/api/elevenlabs/
 # Input data
 src/server/data/input

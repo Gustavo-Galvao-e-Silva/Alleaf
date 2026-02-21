@@ -1,0 +1,245 @@
+/* ── Background ── */
+.videoBg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.videoBg::before {
+  content: "";
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  right: -20px;
+  bottom: -20px;
+  background: url("/photo/01cd11e3e465d21ade52ec4e7ead0c72.jpg") center / cover no-repeat;
+  filter: blur(6px);
+}
+
+.videoBg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.6) 100%),
+    rgba(255,255,255,0.08);
+}
+
+/* ── Page Shell ── */
+.page {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 88px;
+  min-height: 100dvh;
+}
+
+/* ── Hero Section ── */
+.hero {
+  text-align: center;
+  padding: var(--space-9) var(--space-6) var(--space-7);
+}
+
+.sparkleIcon {
+  display: inline-flex;
+  margin-bottom: var(--space-4);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.greeting {
+  font-family: var(--font-sans);
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  color: #ffffff;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 400;
+  letter-spacing: var(--tracking-wide);
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Quote Card ── */
+.quoteSection {
+  padding: var(--space-6) var(--space-6) var(--space-7);
+}
+
+.quoteCard {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.quoteIcon {
+  color: rgba(0, 0, 0, 0.35);
+  margin-bottom: var(--space-4);
+}
+
+.quoteText {
+  font-family: var(--font-sans);
+  font-size: var(--text-lg);
+  font-weight: 400;
+  font-style: italic;
+  line-height: var(--leading-relaxed);
+  letter-spacing: var(--tracking-normal);
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: var(--space-5);
+}
+
+.quoteAttribution {
+  font-family: var(--font-sans);
+  text-align: right;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  font-style: italic;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+/* ── Exercises Section ── */
+.exercisesSection {
+  padding: 0 var(--space-6) var(--space-7);
+}
+
+.sectionTitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
+  margin-bottom: var(--space-4);
+}
+
+.exerciseList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.exerciseCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-left: 3px solid transparent;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  transition: transform 200ms ease-out, background 200ms ease-out;
+}
+
+.exerciseCard:active {
+  transform: scale(0.985);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.exerciseCard[data-accent="blue"] {
+  border-left-color: #4A8B7A;
+}
+
+.exerciseCard[data-accent="purple"] {
+  border-left-color: #5D7A4A;
+}
+
+.exerciseCard[data-accent="rose"] {
+  border-left-color: #6B8F4A;
+}
+
+.exerciseIcon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.exerciseIcon[data-accent="blue"] {
+  background: rgba(107, 163, 146, 0.15);
+  color: #4A8B7A;
+}
+
+.exerciseIcon[data-accent="purple"] {
+  background: rgba(139, 168, 122, 0.15);
+  color: #5D7A4A;
+}
+
+.exerciseIcon[data-accent="rose"] {
+  background: rgba(168, 198, 134, 0.15);
+  color: #6B8F4A;
+}
+
+.exerciseInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.exerciseName {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: rgba(0, 0, 0, 0.85);
+  line-height: var(--leading-snug);
+}
+
+.exerciseDesc {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.55);
+  line-height: var(--leading-normal);
+  margin-top: 3px;
+}
+
+.exerciseDuration {
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.5);
+  margin-top: 4px;
+}
+
+.startButton {
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-5);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-normal);
+  cursor: pointer;
+  transition: background 200ms ease-out, transform 150ms ease-out;
+  min-height: 36px;
+}
+
+.startButton:hover {
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.startButton:active {
+  transform: scale(0.96);
+}

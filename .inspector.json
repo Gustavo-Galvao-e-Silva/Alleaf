@@ -1,0 +1,4 @@
+{
+  "setup": "cd src/client && npm install",
+  "run": "cd src/client && npm run dev"
+}
