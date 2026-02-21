@@ -1,4 +1,6 @@
 flask
 flask-cors
-numpy
+langchain-google-genai
+langgraph
+pydantic
 ./docker/actiancortex-0.1.0b1-py3-none-any.whl
