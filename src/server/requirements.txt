@@ -1,0 +1,4 @@
+flask
+flask-cors
+numpy
+./docker/actiancortex-0.1.0b1-py3-none-any.whl
