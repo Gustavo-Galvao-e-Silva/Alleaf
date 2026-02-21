@@ -1,4 +1,6 @@
 import styles from "./page.module.css";
+import VideoBackground from "./components/VideoBackground";
+import TypedName from "./components/TypedName";
 
 const EXERCISES = [
   {
@@ -124,22 +126,21 @@ function QuoteIcon() {
 
 export default function Home() {
   return (
-    <main className={styles.page}>
-      {/* Hero */}
-      <section className={styles.hero}>
-        <span className={styles.sparkleIcon}>
-          <SparkleIcon />
-        </span>
-        <h1 className={styles.greeting}>Good Evening</h1>
-        <p className={styles.subtitle}>Welcome back to your wellness space</p>
-      </section>
+    <>
+      <VideoBackground className={styles.videoBg} />
+      <main className={styles.page}>
+        {/* Hero */}
+        <section className={styles.hero}>
+          <span className={styles.sparkleIcon}>
+            <SparkleIcon />
+          </span>
+          <h1 className={styles.greeting}>Hello, <TypedName name="Deep" /></h1>
+          <p className={styles.subtitle}>Welcome back to your wellness space</p>
+        </section>
 
       {/* Daily Quote */}
       <section className={styles.quoteSection}>
         <div className={styles.quoteCard}>
-          <span className={styles.quoteIcon}>
-            <QuoteIcon />
-          </span>
           <p className={styles.quoteText}>
             Your limitation—it&apos;s only your imagination.
           </p>
@@ -172,17 +173,19 @@ export default function Home() {
         <ul className={styles.navList}>
           {NAV_ITEMS.map((item) => (
             <li key={item.id}>
-              <button
+              <a
+                href={item.id === "journal" ? "/journal" : "#"}
                 className={styles.navItem}
                 data-active={item.id === "home" ? "true" : undefined}
               >
                 <span className={styles.navIcon}>{item.icon}</span>
                 {item.label}
-              </button>
+              </a>
             </li>
           ))}
         </ul>
       </nav>
     </main>
+    </>
   );
 }
