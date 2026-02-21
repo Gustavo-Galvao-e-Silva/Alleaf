@@ -1,0 +1,243 @@
+/* ── Page Shell ── */
+.page {
+  padding-bottom: 88px;
+  min-height: 100dvh;
+}
+
+/* ── Hero Section ── */
+.hero {
+  text-align: center;
+  padding: var(--space-9) var(--space-6) var(--space-7);
+  background: linear-gradient(180deg, var(--color-accent-light) 0%, var(--color-bg) 100%);
+}
+
+.sparkleIcon {
+  display: inline-flex;
+  margin-bottom: var(--space-4);
+  color: var(--color-accent);
+}
+
+.greeting {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.subtitle {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+/* ── Quote Card ── */
+.quoteSection {
+  padding: var(--space-6) var(--space-6) var(--space-7);
+}
+
+.quoteCard {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-elevated);
+}
+
+.quoteIcon {
+  color: var(--color-accent);
+  margin-bottom: var(--space-4);
+}
+
+.quoteText {
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text);
+  margin-bottom: var(--space-5);
+}
+
+.quoteAttribution {
+  text-align: right;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+/* ── Exercises Section ── */
+.exercisesSection {
+  padding: 0 var(--space-6) var(--space-7);
+}
+
+.sectionTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--space-4);
+}
+
+.exerciseList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.exerciseCard {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--shadow-card);
+  border-left: 3.5px solid transparent;
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+
+.exerciseCard:active {
+  transform: scale(0.985);
+}
+
+.exerciseCard[data-accent="blue"] {
+  border-left-color: var(--color-accent);
+  background: linear-gradient(90deg, var(--color-accent-light) 0%, var(--color-surface) 12%);
+}
+
+.exerciseCard[data-accent="purple"] {
+  border-left-color: var(--color-purple);
+  background: linear-gradient(90deg, var(--color-purple-light) 0%, var(--color-surface) 12%);
+}
+
+.exerciseCard[data-accent="rose"] {
+  border-left-color: var(--color-rose);
+  background: linear-gradient(90deg, var(--color-rose-light) 0%, var(--color-surface) 12%);
+}
+
+.exerciseIcon {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.exerciseIcon[data-accent="blue"] {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.exerciseIcon[data-accent="purple"] {
+  background: var(--color-purple-light);
+  color: var(--color-purple);
+}
+
+.exerciseIcon[data-accent="rose"] {
+  background: var(--color-rose-light);
+  color: var(--color-rose);
+}
+
+.exerciseInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.exerciseName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.3;
+}
+
+.exerciseDesc {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.exerciseDuration {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
+.startButton {
+  flex-shrink: 0;
+  background: var(--color-nav-bg);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-5);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: opacity 200ms ease-out, transform 150ms ease-out;
+  min-height: 36px;
+}
+
+.startButton:hover {
+  opacity: 0.88;
+}
+
+.startButton:active {
+  transform: scale(0.95);
+}
+
+/* ── Bottom Nav ── */
+.bottomNav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-nav);
+  padding: var(--space-2) 0;
+  padding-bottom: max(var(--space-2), env(safe-area-inset-bottom));
+  z-index: 100;
+}
+
+.navList {
+  display: flex;
+  list-style: none;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.navItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-1) var(--space-3);
+  background: none;
+  border: none;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: color 200ms ease-out;
+  min-width: 48px;
+  min-height: 44px;
+  justify-content: center;
+}
+
+.navItem[data-active="true"] {
+  color: var(--color-accent);
+}
+
+.navIcon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
