@@ -97,31 +97,27 @@ def save_chat():
 
 from graph import app_agent # Import the compiled LangGraph
 
-# Change the endpoint name to match what Next.js is calling
 @app.route('/agent/run_session', methods=['POST'])
 def run_session():
     try:
         data = request.json
         user_id = data.get('user_id')
-        user_message = data.get('message') # The message from the curl
+        user_message = data.get('message')
 
-        # 1. Reconstruct the state
-        # In a real app, you'd pull the 'evidence' and 'transcript' from a cache/DB
-        # For now, we'll initialize it to keep the agent running
+        # 1. Reconstruct the state with the NEW message
+        # In the future, we will pull previous transcript messages from a database here
         state = {
             "user_id": user_id,
             "transcript": [HumanMessage(content=user_message)],
-            "evidence": [], # This would be filled by the research_node normally
-            "patient_file": "",
+            "evidence": [],
             "food_for_thought": "",
             "exercises": []
         }
 
         # 2. Run the Graph
-        # Note: app_agent must be imported from your graph.py
         result = app_agent.invoke(state)
 
-        # 3. Return the response back to Next.js
+        # 3. Return the response
         return jsonify({
             "therapy_response": result['transcript'][-1].content,
             "status": "success"
