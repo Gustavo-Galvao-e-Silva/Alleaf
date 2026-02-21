@@ -1,31 +1,27 @@
 import { NextResponse } from 'next/server';
-import { pipeline } from '@xenova/transformers';
 
 export async function POST(req) {
   try {
-    const { text, userId } = await req.json();
+    const data = await req.json();
+    console.log("Data received in Next.js:", data);
 
-    // 1. Vectorize the journal entry
-    const pipe = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
-    const output = await pipe(text, { pooling: 'mean', normalize: true });
-    const vector = Array.from(output.data);
-
-    // 2. Send to Python Bridge to save in Actian
-    const response = await fetch('http://localhost:5001/upsert', {
+    // This is where you talk to your Python bridge
+    const res = await fetch('http://localhost:5001/upsert', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id: Date.now(), // Unique ID
-        text: text,
-        user_id: userId,
-        vector: vector
+        id: data.id || Date.now(),
+        text: data.text,
+        user_id: data.userId,
+        vector: Array(384).fill(0.1) // Temporary: Use real embeddings later
       })
     });
 
-    const result = await response.json();
-    return NextResponse.json(result);
+    if (!res.ok) throw new Error("Bridge connection failed");
 
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
