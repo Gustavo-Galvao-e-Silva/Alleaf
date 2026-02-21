@@ -179,5 +179,27 @@ def save_session():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/agent/end_session', methods=['POST'])
+def end_session():
+    try:
+        data = request.json
+        state = {
+            "user_id": data.get('user_id'),
+            "transcript": [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in data.get('transcript', [])],
+            "evidence": data.get('evidence', []),
+            "exercises": []
+        }
+
+        # We manually trigger the wrap_up_node logic
+        from agents import wrap_up_node
+        result = wrap_up_node(state)
+
+        return jsonify({
+            "exercises": result['exercises'],
+            "status": "completed"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     app.run(port=5001)
