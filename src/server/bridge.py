@@ -104,26 +104,26 @@ def run_session():
         user_id = data.get('user_id')
         user_message = data.get('message')
 
-        # 1. Reconstruct the state with the NEW message
-        # In the future, we will pull previous transcript messages from a database here
+        # To avoid the 'contents' error, check if this is a NEW session or a CHAT
+        # For a CHAT, we skip research and go straight to therapist_node
+
         state = {
             "user_id": user_id,
             "transcript": [HumanMessage(content=user_message)],
-            "evidence": [],
-            "food_for_thought": "",
+            "evidence": data.get('evidence', []), # Pass evidence back from frontend if possible
             "exercises": []
         }
 
-        # 2. Run the Graph
-        result = app_agent.invoke(state)
+        # Instead of running the whole graph, just call the therapist node logic
+        from agents import therapist_node
+        result = therapist_node(state)
 
-        # 3. Return the response
         return jsonify({
             "therapy_response": result['transcript'][-1].content,
             "status": "success"
         })
     except Exception as e:
-        print(f"Error in run_session: {e}")
+        print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/journal/save_session', methods=['POST'])
