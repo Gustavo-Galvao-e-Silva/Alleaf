@@ -99,14 +99,6 @@ from graph import app_agent # Import the compiled LangGraph
 
 @app.route('/journal/save_session', methods=['POST'])
 def save_session():
-    """Step 8: Embed the final conversation and save to Actian."""
-    data = request.json
-    # Here you would use sentence-transformers to embed data['text']
-    # Then client.upsert(...)
-    return jsonify({"status": "saved"})
-
-@app.route('/journal/save_session', methods=['POST'])
-def save_session():
     try:
         data = request.json
         full_text = data.get('text')
