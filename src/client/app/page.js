@@ -426,6 +426,35 @@ export default function Home() {
     }
   }, [isLoaded, isSignedIn, router]);
 
+  const [dailyQuote, setDailyQuote] = useState({ q: "", a: "" });
+
+  useEffect(() => {
+    const STORAGE_KEY = "alleaf_daily_quote";
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        const today = new Date().toDateString();
+        if (parsed.date === today) {
+          setDailyQuote({ q: parsed.q, a: parsed.a });
+          return;
+        }
+      } catch {}
+    }
+    fetch("/api/quote")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.q) {
+          setDailyQuote({ q: data.q, a: data.a });
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({ q: data.q, a: data.a, date: new Date().toDateString() }),
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const [activeExercise, setActiveExercise] = useState(null);
   const [appointments, setAppointments] = useState(() => readAppointments());
   const [scheduleSelection, setScheduleSelection] = useState(() =>
@@ -560,11 +589,13 @@ export default function Home() {
 
         {/* Daily Quote */}
         <section className={styles.quoteSection}>
-          <div className={styles.quoteCard}>
-            <p className={styles.quoteText}>
-              Your limitation—it&apos;s only your imagination.
-            </p>
-            <p className={styles.quoteAttribution}>— Unknown</p>
+          <div className={`${styles.quoteCard} ${dailyQuote.q ? styles.quoteVisible : ""}`}>
+            {dailyQuote.q && (
+              <>
+                <p className={styles.quoteText}>{dailyQuote.q}</p>
+                <p className={styles.quoteAttribution}>— {dailyQuote.a}</p>
+              </>
+            )}
           </div>
         </section>
 
