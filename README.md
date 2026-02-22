@@ -113,4 +113,7 @@ This project was built during **[Hackalytics]** in **[2026]**.
 
 | Name | Role |
 |---|---|
-| — | — |
+| Deep | Frontend |
+| Gustavo | ML |
+| Jhoon | Hardware |
+| Kalyan | Backend |
