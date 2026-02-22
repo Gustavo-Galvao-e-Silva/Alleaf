@@ -100,7 +100,18 @@ def therapist_node(state: TherapySessionState):
     return {"transcript": state['transcript'] + [response]}
 
 def wrap_up_node(state: TherapySessionState):
-    exercise_prompt = "Generate 3 exercises (breathing, todo, script) in a JSON list format."
+    exercise_prompt = """
+    Generate exactly 3 tailored mental health exercises.
+    Each exercise must be one of two types: "asynchronous" or "interactive".
+
+    1. Asynchronous: Static instructions for the user to read.
+    2. Interactive: A script for a guided session.
+       - Use the [BREAK] token between sentences where the AI should stop reading and wait for the user.
+       - Example: "Close your eyes. [BREAK] Now, take a deep breath. [BREAK] Hold it for 4 seconds."
+
+    Return ONLY a JSON list of objects:
+    {"type": "interactive"|"asynchronous", "title": "...", "content": "..."}
+    """
     # NEW: We also need a prompt for the summary
     summary_prompt = "Summarize the key personal details and emotional state from this chat in 2 concise sentences for long-term memory."
     
