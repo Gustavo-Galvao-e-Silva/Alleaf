@@ -11,7 +11,7 @@ def predict():
         if not data:
             return jsonify({"error": "Invalid input"}), 400
 
-        rr_array = data.get("rrArray")
+        rr_array = data.get("currentRR")
         user_id = data.get("userId")
         if not (rr_array or user_id):
             return jsonify({"error": "Missing current heart rate array"}), 400
