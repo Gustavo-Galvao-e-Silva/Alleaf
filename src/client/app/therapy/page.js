@@ -45,42 +45,43 @@ export default function TherapyPage() {
     }
   };
 
-  // STEP 5: Main Chat Loop with History Management
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return;
-
-    const userMsg = { role: 'user', content: input };
-    const currentChat = [...chat, userMsg];
-    
-    // UI Update: Show user message immediately
-    setChat(currentChat);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/therapy/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: 'horyzon',
-          message: input,
-          transcript: chat, // Send history so Gemini has memory
-          evidence: session.evidence // Send Actian evidence for grounding
-        })
-      });
-
-      const data = await res.json();
-      
-      if (data.reply) {
-        setChat([...currentChat, { role: 'assistant', content: data.reply }]);
-      }
-    } catch (err) {
-      console.error("Chat Error:", err);
-      setChat([...currentChat, { role: 'assistant', content: "I'm having trouble connecting. Is the Python bridge running?" }]);
-    } finally {
-      setLoading(false);
-    }
-  };
+   const sendMessage = async () => {
+     if (!input.trim() || loading) return;
+   
+     const userMsg = { role: 'user', content: input };
+     const currentChat = [...chat, userMsg];
+     setChat(currentChat);
+     setInput("");
+     setLoading(true);
+   
+     // Add an empty assistant message we will fill up
+     setChat(prev => [...prev, { role: 'assistant', content: "" }]);
+   
+     const response = await fetch('/api/therapy/chat_stream', { // Hit a new streaming proxy
+       method: 'POST',
+       body: JSON.stringify({ userId: 'horyzon', message: input, transcript: chat, evidence: session.evidence })
+     });
+   
+     const reader = response.body.getReader();
+     const decoder = new TextDecoder();
+     let fullReply = "";
+   
+     while (true) {
+       const { done, value } = await reader.read();
+       if (done) break;
+   
+       const chunk = decoder.decode(value);
+       fullReply += chunk;
+   
+       // Update the LAST message in the chat array with the new chunk
+       setChat(prev => {
+         const newChat = [...prev];
+         newChat[newChat.length - 1].content = fullReply;
+         return newChat;
+       });
+     }
+     setLoading(false);
+   };
 
     const finishSession = async () => {
     setLoading(true);

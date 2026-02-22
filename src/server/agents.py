@@ -151,3 +151,15 @@ def wrap_up_node(state: TherapySessionState):
     # --- PART 3: Return BOTH ---
     # We return the summary so bridge.py can catch it and save it to Actian
     return {"exercises": exercises, "summary": summary_text}
+
+def therapist_stream_node(state: TherapySessionState):
+    user_id = state.get('user_id')
+    evidence_str = "\n".join(state.get('evidence', []))
+    system_prompt = f"You are a professional AI therapist. User ID: {user_id}. Context: {evidence_str}"
+    messages = [SystemMessage(content=system_prompt)] + state['transcript']
+
+    # We use .stream instead of .invoke
+    # Note: Tool calling with streaming is complex,
+    # so we will stream the FINAL response.
+    for chunk in llm.stream(messages):
+        yield ensure_text(chunk.content)

@@ -5,7 +5,7 @@ from flask_cors import CORS
 # 1. Critical Imports
 from cortex import Filter, Field
 from embedder import get_embedding
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 import db # Shared source of truth
 
 app = Flask(__name__)
@@ -138,6 +138,46 @@ def init():
 
     db.init_db()
     return jsonify({"status": "ready"})
+
+from flask import Response
+# At the top of bridge.py, update this line:
+
+# ... (keep existing routes) ...
+
+@app.route('/agent/chat_stream', methods=['POST'])
+def chat_stream():
+    # Critical: Import these inside the function to avoid circular imports
+    from agents import llm, ensure_text
+    
+    try:
+        data = request.json
+        raw_transcript = data.get('transcript', [])
+        history = [
+            HumanMessage(content=m['content']) if m['role'] == 'user' 
+            else AIMessage(content=m['content']) 
+            for m in raw_transcript
+        ]
+        history.append(HumanMessage(content=data.get('message')))
+
+        # Get evidence context from the frontend session
+        evidence_list = data.get('evidence', [])
+        evidence_str = "\n".join(evidence_list) if evidence_list else "No previous context."
+        user_id = data.get('user_id', 'unknown')
+
+        def generate():
+            system_prompt = f"You are a professional AI therapist. User ID: {user_id}. Context: {evidence_str}"
+            messages = [SystemMessage(content=system_prompt)] + history
+            
+            # Use the .stream method for real-time tokens
+            for chunk in llm.stream(messages):
+                content = ensure_text(chunk.content)
+                if content:
+                    yield content
+
+        return Response(generate(), mimetype='text/event-stream')
+    except Exception as e:
+        print(f"Streaming Error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     db.init_db() # Ensure collection is created on startup
