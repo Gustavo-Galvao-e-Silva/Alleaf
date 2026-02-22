@@ -16,10 +16,7 @@ export async function POST(req) {
       baselineRR,
     });
 
-    return new Response(
-      JSON.stringify({ success: true }),
-      { status: 200 },
-    );
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (error) {
     console.error(error);
     return new Response(

@@ -4,7 +4,9 @@ export async function POST() {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+      });
     }
 
     const client = await clerkClient();
