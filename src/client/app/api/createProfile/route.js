@@ -1,25 +1,32 @@
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 
 export async function POST(req) {
   try {
-    const data = await req.json();
-    const userRef = doc(db, "users", data.userId);
-    const docSnap = await getDoc(userRef);
-    if (!docSnap.exists()) {
-      await setDoc(userRef, {
-        baselineRR: null,
-        age: null,
-        sex: "",
-        height: null,
-        weight: null,
-        smoker: "",
-        activityLevel: "",
-        sleepDuration: "",
-      });
-    } else {
-      console.log("User already exists");
-    }
+    const {
+      userId,
+      name,
+      age,
+      sex,
+      height,
+      weight,
+      smoker,
+      activityLevel,
+      sleepDuration,
+    } = await req.json();
+
+    await setDoc(doc(db, "users", userId), {
+      name,
+      age: Number(age),
+      sex,
+      height: Number(height),
+      weight: Number(weight),
+      smoker: smoker === "yes" ? "y" : "n",
+      activityLevel,
+      sleepDuration: Number(sleepDuration),
+      baselineRR: null,
+      createdAt: new Date().toISOString(),
+    });
 
     return new Response(
       JSON.stringify({

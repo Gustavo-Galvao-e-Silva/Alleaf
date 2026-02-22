@@ -3,7 +3,6 @@
 import styles from "./page.module.css";
 import TypedName from "./components/TypedName";
 import BottomNav from "./components/BottomNav";
-import AuthClient from "@/components/authClient/page";
 
 import { useAuth } from "@clerk/nextjs";
 import { useEffect } from "react";
@@ -124,7 +123,6 @@ export default function Home() {
 
   return (
     <>
-      <AuthClient />
       <div className={styles.videoBg} aria-hidden="true" />
       <main className={styles.page}>
         {/* Hero */}
