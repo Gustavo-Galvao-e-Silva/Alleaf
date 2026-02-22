@@ -115,7 +115,15 @@ function QuoteIcon() {
   );
 }
 
-const LINE_DURATION_MS = 10000;
+const LINE_DURATION_MS = 7000;
+
+function normalizeLineForTts(line) {
+  return line
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function ExercisePlayer({ exercise, onClose }) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -123,8 +131,27 @@ function ExercisePlayer({ exercise, onClose }) {
   const [isFinished, setIsFinished] = useState(false);
   const containerRef = useRef(null);
   const lineRefs = useRef([]);
-  const lines = exercise.content || [];
+  const currentAudioRef = useRef(null);
+  const currentAudioUrlRef = useRef("");
+  const speechRequestIdRef = useRef(0);
+  const lines = useMemo(() => exercise.content || [], [exercise.content]);
   const totalDuration = lines.length * LINE_DURATION_MS;
+
+  const stopCurrentPlayback = useCallback(() => {
+    const activeAudio = currentAudioRef.current;
+    if (activeAudio) {
+      activeAudio.onended = null;
+      activeAudio.onerror = null;
+      activeAudio.pause();
+      activeAudio.src = "";
+      currentAudioRef.current = null;
+    }
+
+    if (currentAudioUrlRef.current) {
+      URL.revokeObjectURL(currentAudioUrlRef.current);
+      currentAudioUrlRef.current = "";
+    }
+  }, []);
 
   useEffect(() => {
     if (isFinished) return;
@@ -163,11 +190,89 @@ function ExercisePlayer({ exercise, onClose }) {
     }
   }, [activeIndex]);
 
+  useEffect(() => {
+    if (isFinished || lines.length === 0) {
+      stopCurrentPlayback();
+      return;
+    }
+
+    const activeLine = lines[activeIndex];
+    const text = normalizeLineForTts(activeLine || "");
+    if (!text) return;
+
+    const requestId = speechRequestIdRef.current + 1;
+    speechRequestIdRef.current = requestId;
+    const controller = new AbortController();
+
+    const speakLine = async () => {
+      stopCurrentPlayback();
+
+      try {
+        const response = await fetch("/api/elevenlabs/speak", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) return;
+
+        const audioBlob = await response.blob();
+        if (controller.signal.aborted) return;
+        if (speechRequestIdRef.current !== requestId) return;
+
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+
+        currentAudioRef.current = audio;
+        currentAudioUrlRef.current = audioUrl;
+
+        audio.onended = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          if (currentAudioUrlRef.current === audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+            currentAudioUrlRef.current = "";
+          }
+        };
+
+        audio.onerror = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          if (currentAudioUrlRef.current === audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+            currentAudioUrlRef.current = "";
+          }
+        };
+
+        await audio.play().catch(() => {});
+      } catch {}
+    };
+
+    speakLine();
+
+    return () => {
+      controller.abort();
+    };
+  }, [activeIndex, isFinished, lines, stopCurrentPlayback]);
+
+  useEffect(() => {
+    return () => {
+      stopCurrentPlayback();
+    };
+  }, [stopCurrentPlayback]);
+
   const handleRestart = useCallback(() => {
+    speechRequestIdRef.current += 1;
+    stopCurrentPlayback();
     setActiveIndex(0);
     setProgress(0);
     setIsFinished(false);
-  }, []);
+  }, [stopCurrentPlayback]);
 
   return (
     <div className={styles.playerOverlay}>
@@ -727,19 +832,19 @@ export default function Home() {
                     {ex.icon}
                   </div>
                   <div className={styles.exerciseInfo}>
-                    <p className={styles.exerciseName}>{ex.name}</p>
+                    <p className={styles.exerciseName}>
+                      {ex.name}
+                      <span className={styles.exerciseTypeBadge}>{typeLabel}</span>
+                    </p>
                     <p className={styles.exerciseDuration}>{ex.duration}</p>
                   </div>
-                  <div className={styles.exerciseActions}>
-                    <span className={styles.exerciseTypeBadge}>{typeLabel}</span>
-                    <button
-                      className={styles.startButton}
-                      onClick={() => isInteractive && setActiveExercise(ex)}
-                      disabled={!isInteractive}
-                    >
-                      {isInteractive ? "Start" : "Soon"}
-                    </button>
-                  </div>
+                  <button
+                    className={styles.startButton}
+                    onClick={() => isInteractive && setActiveExercise(ex)}
+                    disabled={!isInteractive}
+                  >
+                    {isInteractive ? "Start" : "Soon"}
+                  </button>
                 </div>
               );
             })}
