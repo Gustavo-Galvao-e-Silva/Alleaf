@@ -1,5 +1,5 @@
 import { db } from "@/firebase";
-import { collection, addDoc, serverTimestamp, query, where, getDocs, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, getDocs, orderBy } from "firebase/firestore";
 import { NextResponse } from "next/server";
 
 export async function POST(req) {
@@ -7,24 +7,41 @@ export async function POST(req) {
     const body = await req.json();
     const { userId, title, body: journalBody, text, type, prompt, action, id } = body;
 
-    // --- CASE 1: LISTING HISTORY (Triggered when you click the History tab) ---
+    // --- 1. LISTING HISTORY ---
     if (action === "list") {
       const q = query(
         collection(db, "users", userId, "journals"),
         orderBy("createdAt", "desc")
       );
       const snapshot = await getDocs(q);
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate().toISOString() || new Date().toISOString()
-      }));
+      
+      const items = snapshot.docs.map(doc => {
+        const data = doc.data();
+        let createdAtIso;
+
+        // BULLETPROOF TIMESTAMP CHECK
+        if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+          createdAtIso = data.createdAt.toDate().toISOString();
+        } else if (data.createdAt instanceof Date) {
+          createdAtIso = data.createdAt.toISOString();
+        } else {
+          // Fallback if timestamp is missing or a string
+          createdAtIso = data.createdAt || new Date().toISOString();
+        }
+
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: createdAtIso
+        };
+      });
+
       return NextResponse.json({ items });
     }
 
-    // --- CASE 2: SAVING NEW ENTRY (The "Double Save") ---
+    // --- 2. SAVING NEW ENTRY ---
     
-    // 1. Save to Firestore (For the UI/History tab)
+    // Save to Firestore for History
     const docRef = await addDoc(collection(db, "users", userId, "journals"), {
       title,
       body: journalBody,
@@ -34,19 +51,19 @@ export async function POST(req) {
       preview: journalBody.length > 80 ? journalBody.slice(0, 80) + "…" : journalBody
     });
 
-    // 2. Save to Vector DB via Python Bridge (For AI Therapist Memory)
+    // Save to Vector DB for AI Memory
     try {
       await fetch('http://localhost:5001/upsert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: userId,
-          text: text, // This is the "Title + Content" string Gemini needs
+          text: text, // This is Title + Content
           id: id || Date.now()
         })
       });
     } catch (pythonError) {
-      console.error("Python Bridge unreachable, but Firestore saved.");
+      console.error("Vector DB sync failed, but Firestore saved.");
     }
 
     return NextResponse.json({ success: true, id: docRef.id });

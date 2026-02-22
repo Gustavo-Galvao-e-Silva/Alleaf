@@ -213,17 +213,23 @@ useEffect(() => {
           body: JSON.stringify({ action: "list", userId: user.id }),
         });
         const data = await res.json();
-        
+
         if (res.ok) {
-          // Format the data so entry.date and entry.time exist for the UI
-          const formattedHistory = (data.items || []).map(item => {
+          // --- THE CRITICAL FIX: Mapping the fields for the UI ---
+          const formattedHistory = (data.items || []).map((item) => {
+            // Use the createdAt string from the API, fallback to now if missing
             const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
+            
             return {
               ...item,
+              // Create the specific 'date' and 'time' strings the JSX needs
               date: dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-              time: dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+              time: dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+              // Ensure preview exists even if it wasn't saved correctly
+              preview: item.preview || (item.body ? item.body.slice(0, 80) + "..." : "No content")
             };
           });
+          
           setHistory(formattedHistory);
         }
       } catch (err) {
