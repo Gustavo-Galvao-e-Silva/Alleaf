@@ -13,3 +13,14 @@ def init_db():
     if not client.has_collection(COLLECTION):
         client.create_collection(name=COLLECTION, dimension=384)
     return True
+
+def reset_db():
+    """Drops the collection and recreates it from scratch."""
+    if client.has_collection(COLLECTION):
+        client.drop_collection(COLLECTION)
+        print(f"--- Collection {COLLECTION} dropped! ---")
+
+    # Recreate with the correct dimensions for your embedder
+    client.create_collection(name=COLLECTION, dimension=384)
+    print(f"--- Collection {COLLECTION} recreated! ---")
+    return True
