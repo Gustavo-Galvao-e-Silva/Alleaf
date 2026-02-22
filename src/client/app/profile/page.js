@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Slider } from "@heroui/react";
 import styles from "./page.module.css";
 import BottomNav from "../components/BottomNav";
 
@@ -23,8 +24,19 @@ const MOCK_CLERK_USER = {
 };
 
 const GENDER_OPTIONS = ["Male", "Female", "Non-binary", "Prefer not to say"];
-const SLEEP_QUALITY_OPTIONS = ["Poor", "Fair", "Good", "Excellent"];
 const ACTIVITY_LEVEL_OPTIONS = ["Sedentary", "Light", "Moderate", "Active", "Very Active"];
+const SMOKER_OPTIONS = ["Yes", "No"];
+
+const clampSleepDuration = (value) => {
+  const resolvedValue = Array.isArray(value) ? value[0] : value;
+  const numericValue = Number(resolvedValue);
+
+  if (!Number.isFinite(numericValue)) {
+    return 7;
+  }
+
+  return Math.min(10, Math.max(1, Math.round(numericValue)));
+};
 
 function EditIcon() {
   return (
@@ -100,6 +112,7 @@ export default function ProfilePage() {
   const [editingPersonal, setEditingPersonal] = useState(false);
   const [personalInfo, setPersonalInfo] = useState({
     dateOfBirth: "",
+    age: null,
     gender: "",
   });
   const [tempPersonalInfo, setTempPersonalInfo] = useState({ ...personalInfo });
@@ -107,12 +120,11 @@ export default function ProfilePage() {
   // Section 3: Health Profile State
   const [editingHealth, setEditingHealth] = useState(false);
   const [healthProfile, setHealthProfile] = useState({
-    sleepDuration: "",
-    sleepQuality: "",
+    sleepDuration: null,
     activityLevel: "",
     height: "",
     weight: "",
-    dailySteps: "",
+    smoker: "",
   });
   const [tempHealthProfile, setTempHealthProfile] = useState({ ...healthProfile });
 
@@ -129,7 +141,10 @@ export default function ProfilePage() {
   };
 
   const handleSavePersonal = () => {
-    setPersonalInfo({ ...tempPersonalInfo });
+    setPersonalInfo({
+      ...tempPersonalInfo,
+      age: calculateAge(tempPersonalInfo.dateOfBirth),
+    });
     setEditingPersonal(false);
   };
 
@@ -140,12 +155,18 @@ export default function ProfilePage() {
 
   // Health Profile Handlers
   const handleEditHealth = () => {
-    setTempHealthProfile({ ...healthProfile });
+    setTempHealthProfile({
+      ...healthProfile,
+      sleepDuration: clampSleepDuration(healthProfile.sleepDuration),
+    });
     setEditingHealth(true);
   };
 
   const handleSaveHealth = () => {
-    setHealthProfile({ ...tempHealthProfile });
+    setHealthProfile({
+      ...tempHealthProfile,
+      sleepDuration: clampSleepDuration(tempHealthProfile.sleepDuration),
+    });
     setEditingHealth(false);
   };
 
@@ -168,14 +189,37 @@ export default function ProfilePage() {
     return `${kg} kg (${lbs} lbs)`;
   };
 
-  const formatSteps = (steps) => {
-    if (!steps) return "—";
-    return Number(steps).toLocaleString() + " steps";
+  const formatSleepDuration = (hours) => {
+    if (hours === null || hours === undefined || hours === "") return "—";
+    return `${hours} hours`;
   };
 
-  const formatSleepDuration = (hours) => {
-    if (!hours) return "—";
-    return `${hours} hours`;
+  const getSleepDurationLevel = (hours) => {
+    if (hours === null || hours === undefined || hours === "") return null;
+    return clampSleepDuration(hours);
+  };
+
+  const currentSleepDurationLevel = editingHealth
+    ? getSleepDurationLevel(tempHealthProfile.sleepDuration)
+    : getSleepDurationLevel(healthProfile.sleepDuration);
+
+  const calculateAge = (dateOfBirth) => {
+    if (!dateOfBirth) return null;
+
+    const dob = new Date(dateOfBirth);
+    if (Number.isNaN(dob.getTime())) return null;
+
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const hasHadBirthdayThisYear =
+      today.getMonth() > dob.getMonth() ||
+      (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+
+    if (!hasHadBirthdayThisYear) {
+      age -= 1;
+    }
+
+    return age >= 0 ? age : null;
   };
 
   return (
@@ -263,39 +307,50 @@ export default function ProfilePage() {
             onCancel={handleCancelHealth}
           >
             <FieldRow
-              label="Sleep Duration"
+              label={
+                <span className={styles.sleepLabelWithBadge}>
+                  <span>Average Sleep Duration</span>
+                  <span
+                    className={styles.sleepLevelBadge}
+                    aria-label={
+                      currentSleepDurationLevel === null
+                        ? "Average sleep duration level not set"
+                        : `Average sleep duration level ${currentSleepDurationLevel}`
+                    }
+                  >
+                    {currentSleepDurationLevel ?? "—"}
+                  </span>
+                </span>
+              }
               value={formatSleepDuration(healthProfile.sleepDuration)}
               isEditing={editingHealth}
             >
-              <div className={styles.inputWithUnit}>
-                <input
-                  type="number"
-                  className={styles.input}
-                  placeholder="8"
-                  min="1"
-                  max="24"
-                  value={tempHealthProfile.sleepDuration}
-                  onChange={(e) => setTempHealthProfile({ ...tempHealthProfile, sleepDuration: e.target.value })}
-                />
-                <span className={styles.inputUnit}>hours</span>
-              </div>
-            </FieldRow>
-
-            <FieldRow
-              label="Sleep Quality"
-              value={healthProfile.sleepQuality}
-              isEditing={editingHealth}
-            >
-              <select
-                className={styles.select}
-                value={tempHealthProfile.sleepQuality}
-                onChange={(e) => setTempHealthProfile({ ...tempHealthProfile, sleepQuality: e.target.value })}
-              >
-                <option value="">Select quality</option>
-                {SLEEP_QUALITY_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
+              <Slider
+                aria-label="Average sleep duration"
+                className={styles.sleepSlider}
+                classNames={{
+                  value: styles.sleepSliderValueHidden,
+                  trackWrapper: styles.sleepSliderTrackWrapper,
+                  track: styles.sleepSliderTrack,
+                  filler: styles.sleepSliderFiller,
+                  thumb: styles.sleepSliderThumb,
+                  step: styles.sleepSliderStep,
+                }}
+                minValue={1}
+                maxValue={10}
+                step={1}
+                hideValue
+                showSteps
+                size="sm"
+                color="success"
+                value={clampSleepDuration(tempHealthProfile.sleepDuration)}
+                onChange={(value) =>
+                  setTempHealthProfile({
+                    ...tempHealthProfile,
+                    sleepDuration: clampSleepDuration(value),
+                  })
+                }
+              />
             </FieldRow>
 
             <FieldRow
@@ -354,23 +409,20 @@ export default function ProfilePage() {
             </FieldRow>
 
             <FieldRow
-              label="Daily Steps Goal"
-              value={formatSteps(healthProfile.dailySteps)}
+              label="Smoker"
+              value={healthProfile.smoker}
               isEditing={editingHealth}
             >
-              <div className={styles.inputWithUnit}>
-                <input
-                  type="number"
-                  className={styles.input}
-                  placeholder="10000"
-                  min="0"
-                  max="100000"
-                  step="500"
-                  value={tempHealthProfile.dailySteps}
-                  onChange={(e) => setTempHealthProfile({ ...tempHealthProfile, dailySteps: e.target.value })}
-                />
-                <span className={styles.inputUnit}>steps</span>
-              </div>
+              <select
+                className={styles.select}
+                value={tempHealthProfile.smoker}
+                onChange={(e) => setTempHealthProfile({ ...tempHealthProfile, smoker: e.target.value })}
+              >
+                <option value="">Select an option</option>
+                {SMOKER_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
             </FieldRow>
           </SectionCard>
 
