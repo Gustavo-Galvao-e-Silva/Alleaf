@@ -4,12 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import styles from "./page.module.css";
 import BottomNav from "../components/BottomNav";
 
-const PROMPTS = [
-  "What are three things you're grateful for today?",
-  "Describe a challenge you faced recently and how you overcame it.",
-  "What does your ideal day look like?",
-  "Write about a person who inspires you and why.",
-  "What are your goals for the next month?",
+const promptList = [
+  "What is one small win you had today?",
+  "What is something you’re proud of accomplishing this week?",
+  "Describe a moment recently that made you smile.",
+  "What is a habit you’re building that’s improving your life?",
+  "Who supported you recently, and how did they help you?",
+  "What is something you’re excited about in the near future?",
+  "What is a challenge you handled better than before?",
+  "What does “success” look like for you right now?",
+  "What is something you’ve learned about yourself lately?",
+  "What is one way you showed kindness today?"
 ];
 
 function formatDateTime() {
@@ -25,6 +30,17 @@ function SparkleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2l1.5 6.5L20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2z" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 16H3v5" />
     </svg>
   );
 }
@@ -69,9 +85,13 @@ export default function JournalPage() {
   const [freeBody, setFreeBody] = useState("");
   const [promptedTitle, setPromptedTitle] = useState("");
   const [promptedBody, setPromptedBody] = useState("");
-  const [currentPrompt] = useState(
-    PROMPTS[Math.floor(Math.random() * PROMPTS.length)]
+  const [currentPrompt, setCurrentPrompt] = useState(
+    promptList[Math.floor(Math.random() * promptList.length)]
   );
+
+  const refreshPrompt = () => {
+    setCurrentPrompt(promptList[Math.floor(Math.random() * promptList.length)]);
+  };
 
   const [history, setHistory] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -175,15 +195,17 @@ export default function JournalPage() {
               <h1 className={styles.title}>Journal</h1>
               <p className={styles.subtitle}>Express your thoughts</p>
             </div>
-            {(showSave || saveLabel === "saved") && (
-              <button
-                className={`${styles.saveBtn} ${saveLabel === "saved" ? styles.saveBtnDone : ""}`}
-                onClick={saveLabel === "saved" ? undefined : handleSave}
-                disabled={saveLabel === "saved"}
-              >
-                {saveLabel === "saved" ? "Saved!" : "Save"}
-              </button>
-            )}
+            <div className={styles.headerActions}>
+              {(showSave || saveLabel === "saved") && (
+                <button
+                  className={`${styles.saveBtn} ${saveLabel === "saved" ? styles.saveBtnDone : ""}`}
+                  onClick={saveLabel === "saved" ? undefined : handleSave}
+                  disabled={saveLabel === "saved"}
+                >
+                  {saveLabel === "saved" ? "Saved!" : "Save"}
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
@@ -220,7 +242,12 @@ export default function JournalPage() {
                 <SparkleIcon />
               </span>
               <div>
-                <p className={styles.promptLabel}>Today&apos;s Prompt</p>
+                <div className={styles.promptHeader}>
+                  <p className={styles.promptLabel}>Today&apos;s Prompt</p>
+                  <button className={styles.refreshBtn} onClick={refreshPrompt}>
+                    <RefreshIcon />
+                  </button>
+                </div>
                 <p className={styles.promptText}>{currentPrompt}</p>
               </div>
             </div>
