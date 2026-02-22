@@ -1,20 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AssistantRuntimeProvider,
   useAuiState,
   useThreadRuntime,
 } from "@assistant-ui/react";
-import { Orb } from "@/components/ui/orb"
+import { Orb } from "@/components/ui/orb";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
-
-
 import {
   useChatRuntime,
   AssistantChatTransport,
 } from "@assistant-ui/react-ai-sdk";
 import { Thread } from "@/components/assistant-ui/thread";
+import {
+  buildAppointmentTitle,
+  buildContextItemsFromAppointment,
+  clearActiveAppointmentSession,
+  completeAppointment,
+  markAppointmentSessionStarted,
+  readActiveAppointmentSession,
+  readAppointments,
+  writeActiveAppointmentSession,
+} from "@/app/lib/appointments";
 import BottomNav from "../components/BottomNav";
 import styles from "./page.module.css";
 
@@ -458,14 +467,99 @@ function VoiceOutputController({ isVoiceRunning, onVoiceOutputError }) {
   return null;
 }
 
+function deriveAppointmentSessionState(requestedAppointmentId, revision) {
+  void revision;
+  const appointments = readAppointments();
+  const findById = (appointmentId) =>
+    appointments.find((appointment) => appointment.id === appointmentId);
+
+  let session = readActiveAppointmentSession();
+  let appointment = null;
+  let shouldPersistSession = false;
+  let shouldClearSession = false;
+  let shouldMarkStarted = false;
+
+  if (requestedAppointmentId) {
+    const requestedAppointment = findById(requestedAppointmentId);
+    if (requestedAppointment && requestedAppointment.status === "scheduled") {
+      const startedAt =
+        requestedAppointment.startedAt ||
+        (session?.appointmentId === requestedAppointment.id
+          ? session.startedAt
+          : null) ||
+        new Date().toISOString();
+
+      session = {
+        appointmentId: requestedAppointment.id,
+        startedAt,
+        contextItems:
+          session?.appointmentId === requestedAppointment.id &&
+          Array.isArray(session.contextItems)
+            ? session.contextItems
+            : buildContextItemsFromAppointment(requestedAppointment),
+      };
+
+      appointment = {
+        ...requestedAppointment,
+        startedAt,
+      };
+      shouldPersistSession = true;
+      shouldMarkStarted = !requestedAppointment.startedAt;
+    }
+  }
+
+  if (!appointment && session?.appointmentId) {
+    const linkedAppointment = findById(session.appointmentId);
+    if (linkedAppointment && linkedAppointment.status === "scheduled") {
+      appointment = linkedAppointment;
+      shouldMarkStarted = !linkedAppointment.startedAt && Boolean(session.startedAt);
+    } else {
+      session = null;
+      shouldClearSession = true;
+    }
+  }
+
+  return {
+    session,
+    appointment,
+    shouldPersistSession,
+    shouldClearSession,
+    shouldMarkStarted,
+  };
+}
+
 export default function ChatPage() {
-  const [isVoiceOpen, setIsVoiceOpen] = useState(false);
-  const [isVoiceRunning, setIsVoiceRunning] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedAppointmentId = searchParams.get("appointment");
+  const [sessionRevision, setSessionRevision] = useState(0);
+  const [isVoiceOpen, setIsVoiceOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get("appointment") || readActiveAppointmentSession()?.appointmentId);
+  });
+  const [isVoiceRunning, setIsVoiceRunning] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get("appointment") || readActiveAppointmentSession()?.appointmentId);
+  });
   const [isVoiceAwaitingResponse, setIsVoiceAwaitingResponse] = useState(false);
-  const [isMiniOrbSettled, setIsMiniOrbSettled] = useState(false);
+  const [isMiniOrbSettled, setIsMiniOrbSettled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get("appointment") || readActiveAppointmentSession()?.appointmentId);
+  });
   const [voiceInputError, setVoiceInputError] = useState("");
   const { getInputVolume, getOutputVolume } = useVoiceLevels(isVoiceRunning);
   const voiceOrbLayoutId = "voice-orb";
+
+  const appointmentSessionState = useMemo(
+    () => deriveAppointmentSessionState(requestedAppointmentId, sessionRevision),
+    [requestedAppointmentId, sessionRevision],
+  );
+
+  const activeAppointmentSession = appointmentSessionState.session;
+  const activeAppointment = appointmentSessionState.appointment;
 
   const handleVoiceInputError = useCallback((message) => {
     setVoiceInputError(message);
@@ -476,26 +570,55 @@ export default function ChatPage() {
     setVoiceInputError(message);
   }, []);
 
+  const contextItems = useMemo(() => {
+    if (!activeAppointmentSession?.contextItems) return [];
+    return Array.isArray(activeAppointmentSession.contextItems)
+      ? activeAppointmentSession.contextItems
+      : [];
+  }, [activeAppointmentSession]);
+
+  const openVoiceMode = useCallback(() => {
+    setVoiceInputError("");
+    setIsMiniOrbSettled(false);
+    setIsVoiceOpen(true);
+    setIsVoiceRunning(true);
+  }, []);
+
+  const stopVoiceMode = useCallback(() => {
+    setIsVoiceRunning(false);
+    setIsVoiceAwaitingResponse(false);
+  }, []);
+
+  useEffect(() => {
+    if (
+      appointmentSessionState.shouldMarkStarted &&
+      appointmentSessionState.appointment?.id
+    ) {
+      markAppointmentSessionStarted(
+        appointmentSessionState.appointment.id,
+        appointmentSessionState.session?.startedAt,
+      );
+    }
+
+    if (appointmentSessionState.shouldPersistSession && appointmentSessionState.session) {
+      writeActiveAppointmentSession(appointmentSessionState.session);
+    }
+
+    if (appointmentSessionState.shouldClearSession) {
+      clearActiveAppointmentSession();
+    }
+  }, [appointmentSessionState]);
+
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
       api: "/api/chat",
       body: {
         input_mode: "text",
+        appointment_id: activeAppointmentSession?.appointmentId || null,
+        context_items: contextItems,
       },
     }),
   });
-
-  const openVoiceMode = () => {
-    setVoiceInputError("");
-    setIsMiniOrbSettled(false);
-    setIsVoiceOpen(true);
-    setIsVoiceRunning(true);
-  };
-
-  const stopVoiceMode = () => {
-    setIsVoiceRunning(false);
-    setIsVoiceAwaitingResponse(false);
-  };
 
   const handleOrbClick = () => {
     setVoiceInputError("");
@@ -504,6 +627,19 @@ export default function ChatPage() {
       return;
     }
     setIsVoiceRunning(true);
+  };
+
+  const handleEndSession = () => {
+    if (!activeAppointmentSession?.appointmentId) return;
+
+    stopVoiceMode();
+    setIsVoiceOpen(false);
+    completeAppointment(activeAppointmentSession.appointmentId, {
+      summaryPlaceholder: "",
+    });
+    clearActiveAppointmentSession();
+    setSessionRevision((value) => value + 1);
+    router.replace("/chat");
   };
 
   return (
@@ -516,6 +652,23 @@ export default function ChatPage() {
               isVoiceOpen ? styles.chatContainerOpen : ""
             }`}
           >
+            <header className={styles.chatTopBar}>
+              <p className={styles.chatTopBarTitle}>
+                {activeAppointment
+                  ? buildAppointmentTitle(activeAppointment)
+                  : "Therapist Chat"}
+              </p>
+              {activeAppointment ? (
+                <button
+                  type="button"
+                  className={styles.endSessionButton}
+                  onClick={handleEndSession}
+                >
+                  End Session
+                </button>
+              ) : null}
+            </header>
+
             <div className={styles.chatPanel}>
               <AssistantRuntimeProvider runtime={runtime}>
                 <VoiceInputController

@@ -1,61 +1,45 @@
 import pickle
-from typing import Any
 import pandas as pd
-from xgboost import XGBClassifier, plot_importance
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report
 
-INPUT_FILE_PATH = f"../data/output/data.csv"
-OUTPUT_FILE_NAME = "model.pkl"
+INPUT_FILE = "../data/output/data.csv"
+MODEL_FILE = "model.pkl"
 TEST_IDS = ["S15", "S16", "S17"]
-TARGET_COLUMN = "stress"
-ID_COLUMN = "subject_id"
 
 
-def build_clean_df(file_path: str) -> pd.DataFrame:
-    df = pd.read_csv(file_path, index_col=0)
-    df["smoker"] = (df["smoker"] == "Y").astype(int)
-    df["male"] = (df["gender"] == "M").astype(int)
-    return df.drop(columns="gender")
+def train():
+    df = pd.read_csv(INPUT_FILE).dropna()
 
+    train_df = df[~df["subject_id"].isin(TEST_IDS)]
+    test_df = df[df["subject_id"].isin(TEST_IDS)]
 
-def build_test_train_dfs(
-    df: pd.DataFrame, subject_ids: list[str], id_col: str, target_col: str
-) -> tuple[Any, ...]:
-    train_df = df[~df["subject_id"].isin(subject_ids)]
-    test_df = df[df["subject_id"].isin(subject_ids)]
-    X_train = train_df.drop(columns=[id_col, target_col])
-    y_train = train_df[target_col]
-    X_test = test_df.drop(columns=[id_col, target_col])
-    y_test = test_df[target_col]
-    return X_train, X_test, y_train, y_test
+    X_train = train_df.drop(columns=["subject_id", "stress"])
+    y_train = train_df["stress"]
+    X_test = test_df.drop(columns=["subject_id", "stress"])
+    y_test = test_df["stress"]
 
+    pipeline = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "model",
+                LogisticRegression(
+                    class_weight="balanced", random_state=42, max_iter=1000
+                ),
+            ),
+        ]
+    )
 
-def train_model(
-    X_train: pd.DataFrame, y_train: pd.Series, hyper_params: dict[str, Any]
-) -> XGBClassifier:
-    model = XGBClassifier(**hyper_params)
-    model.fit(X_train, y_train)
-    return model
+    pipeline.fit(X_train, y_train)
+
+    print(classification_report(y_test, pipeline.predict(X_test)))
+
+    with open(MODEL_FILE, "wb") as f:
+        pickle.dump({"model": pipeline, "features": X_train.columns.tolist()}, f)
 
 
 if __name__ == "__main__":
-    df = build_clean_df(INPUT_FILE_PATH)
-    X_train, X_test, y_train, y_test = build_test_train_dfs(
-        df, TEST_IDS, ID_COLUMN, TARGET_COLUMN
-    )
-    hyper_params = {
-        "n_estimators": 100,
-        "max_depth": 6,
-        "learning_rate": 0.1,
-        "random_state": 42,
-    }
-    model = train_model(X_train, y_train, hyper_params)
-    y_pred = model.predict(X_test)
-    print(accuracy_score(y_test, y_pred))
-    print(classification_report(y_test, y_pred))
-    for feature, importance in zip(X_train.columns, model.feature_importances_):
-        print(f"{feature}: {importance:.4f}")
-    with open(OUTPUT_FILE_NAME, "wb") as f:
-        feature_cols = X_train.columns.to_list()
-        payload = {"model": model, "features": feature_cols}
-        pickle.dump(payload, f)
+    train()

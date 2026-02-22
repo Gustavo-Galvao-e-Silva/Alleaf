@@ -8,6 +8,8 @@ const DEFAULT_AGENT_ID = "agent_8001kj0ycbc0e6984qw4vbj1pgaj";
 const WS_RESPONSE_IDLE_MS = 550;
 const WS_TOTAL_TIMEOUT_MS = 20000;
 const AGENT_REPLY_RETRIES = 1;
+const MAX_CONTEXT_ITEMS = 12;
+const MAX_CONTEXT_CHARS_PER_ITEM = 800;
 
 function isRecord(value) {
   return value !== null && typeof value === "object";
@@ -54,6 +56,48 @@ function getLatestUserText(messages) {
   }
 
   return "";
+}
+
+function normalizeContextItems(contextItems) {
+  if (!Array.isArray(contextItems)) return [];
+
+  const normalized = [];
+
+  for (const item of contextItems) {
+    if (normalized.length >= MAX_CONTEXT_ITEMS) break;
+
+    if (typeof item === "string") {
+      const text = item.trim();
+      if (!text) continue;
+      normalized.push(text.slice(0, MAX_CONTEXT_CHARS_PER_ITEM));
+      continue;
+    }
+
+    if (!isRecord(item)) continue;
+
+    if (typeof item.text === "string") {
+      const text = item.text.trim();
+      if (!text) continue;
+      normalized.push(text.slice(0, MAX_CONTEXT_CHARS_PER_ITEM));
+      continue;
+    }
+
+    const serialized = JSON.stringify(item);
+    if (!serialized || serialized === "{}") continue;
+    normalized.push(serialized.slice(0, MAX_CONTEXT_CHARS_PER_ITEM));
+  }
+
+  return normalized;
+}
+
+function buildAgentInputText({ userText, contextItems }) {
+  if (!contextItems.length) return userText;
+
+  const contextBlock = contextItems
+    .map((item, index) => `${index + 1}. ${item}`)
+    .join("\n");
+
+  return `Session context:\n${contextBlock}\n\nUser message:\n${userText}`;
 }
 
 async function getSignedUrl({ apiKey, agentId }) {
@@ -330,6 +374,7 @@ export async function POST(req) {
 
   const messages = Array.isArray(body?.messages) ? body.messages : [];
   const inputMode = body?.input_mode === "speech" ? "speech" : "text";
+  const contextItems = normalizeContextItems(body?.context_items);
 
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const agentId = process.env.ELEVENLABS_AGENT_ID || DEFAULT_AGENT_ID;
@@ -363,11 +408,16 @@ export async function POST(req) {
     );
   }
 
+  const requestText = buildAgentInputText({
+    userText,
+    contextItems,
+  });
+
   try {
     const agentReply = await getAgentTextReplyWithRetry({
       apiKey,
       agentId,
-      userText,
+      userText: requestText,
     });
 
     return buildUiTextResponse({
