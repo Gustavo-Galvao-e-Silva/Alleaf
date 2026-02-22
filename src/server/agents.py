@@ -87,16 +87,30 @@ def therapist_node(state: TherapySessionState):
 
 def wrap_up_node(state: TherapySessionState):
     exercise_prompt = "Generate 3 exercises (breathing, todo, script) in a JSON list format."
+    # NEW: We also need a prompt for the summary
+    summary_prompt = "Summarize the key personal details and emotional state from this chat in 2 concise sentences for long-term memory."
+    
     history = "\n".join([f"{'User' if isinstance(m, HumanMessage) else 'Therapist'}: {m.content}" for m in state['transcript']])
 
+    # --- PART 1: Generate the Summary (The "Memory" part) ---
+    try:
+        summary_res = llm.invoke([
+            SystemMessage(content=summary_prompt), 
+            HumanMessage(content=history)
+        ])
+        summary_text = ensure_text(summary_res.content)
+    except Exception as e:
+        print(f"Summary Error: {e}")
+        summary_text = "Session summary unavailable."
+
+    # --- PART 2: Generate the Exercises (The "UI" part) ---
     try:
         response = llm.invoke([
             SystemMessage(content=exercise_prompt),
             HumanMessage(content=f"Session history:\n{history}")
         ])
-        # FIX: Clean content before JSON parsing
         content = ensure_text(response.content)
-        
+
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
@@ -108,4 +122,7 @@ def wrap_up_node(state: TherapySessionState):
     except Exception as e:
         print(f"Wrap Up Error: {e}")
         exercises = []
-    return {"exercises": exercises}
+
+    # --- PART 3: Return BOTH ---
+    # We return the summary so bridge.py can catch it and save it to Actian
+    return {"exercises": exercises, "summary": summary_text}

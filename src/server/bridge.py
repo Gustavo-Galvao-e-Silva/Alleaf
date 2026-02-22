@@ -84,18 +84,18 @@ def run_session():
     _, therapist_node, _ = get_agent_nodes()
     data = request.json
     raw_transcript = data.get('transcript', [])
+
     history = [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in raw_transcript]
     history.append(HumanMessage(content=data.get('message')))
 
     state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', [])}
-
     result = therapist_node(state)
 
+    # Cleanest possible response - agents.py did the hard work
     return jsonify({
-        "therapy_response": str(result['transcript'][-1].content),
-        # FIX: Ensure every message content is forced to a string
+        "therapy_response": result['transcript'][-1].content,
         "full_transcript": [
-            {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": str(m.content)} 
+            {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content}
             for m in result['transcript']
         ]
     })
@@ -109,6 +109,23 @@ def end_session():
 
     state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', [])}
     result = wrap_up_node(state)
+
+    # --- THE FIX: Actually save to Actian ---
+    summary_text = result.get('summary', "Session ended.")
+    vector = get_embedding(summary_text)
+
+    db.client.upsert(
+        db.COLLECTION,
+        id=int(time.time()),
+        vector=vector,
+        payload={
+            "text": summary_text,
+            "user_id": data.get('user_id'),
+            "type": "session_summary"
+        }
+    )
+    db.client.flush(db.COLLECTION)
+
     return jsonify({"exercises": result['exercises']})
 
 @app.route('/init', methods=['GET'])
