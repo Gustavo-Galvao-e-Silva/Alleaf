@@ -507,72 +507,15 @@ function MessageSync({ onUpdate }) {
   return null;
 }
 
-function ClinicalInitializer({ userId, userNotes, hasMounted, setSessionAgenda }) {
+
+// REPLACE Lines 538-542 with this:
+function ClinicalInitializer({ userId, userNotes, hasMounted, sessionAgendaRef }) {
   const threadRuntime = useThreadRuntime();
   const didInitRef = useRef(false);
 
   useEffect(() => {
     const initializeClinicalSession = async () => {
-      if (!hasMounted || !userId || didInitRef.current) return;
-      didInitRef.current = true;
-
-      try {
-        const res = await fetch('http://localhost:5001/agent/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_id: userId, user_notes: userNotes })
-        });
-
-        const data = await res.json();
-        if (data.agenda) setSessionAgenda(data.agenda);
-
-        if (data.food_for_thought) {
-          threadRuntime.append({
-            role: "assistant",
-            content: [{ type: "text", text: data.food_for_thought }]
-          });
-        }
-      } catch (e) {
-        console.error("Clinical Init Failed:", e);
-      }
-    };
-
-    initializeClinicalSession();
-  }, [hasMounted, userId, userNotes, threadRuntime, setSessionAgenda]);
-
-  return null;
-}
-
-export default function ChatPage() {
-  const [sessionAgenda, setSessionAgenda] = useState("");
-  const didInitRef = useRef(false); // Prevents the AI from greeting you twice
-  const messagesRef = useRef([]); // This will hold our real transcript
-
-  const [hasMounted, setHasMounted] = useState(false);
-
-  const { userId } = useAuth(); // Get the real Clerk ID
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const userNotes = searchParams.get("notes") || "";
-  const requestedAppointmentId = searchParams.get("appointment");
-
-const runtime = useChatRuntime({
-    transport: new AssistantChatTransport({
-      api: "/api/chat",
-      body: {
-        userId: userId,
-        userNotes: userNotes,
-        agenda: sessionAgenda // <--- ADD THIS LINE
-      },
-    }),
-  });
-
-  useEffect(() => { setHasMounted(true); }, []);
-
-
-  useEffect(() => {
-    const initializeClinicalSession = async () => {
-      // Guard: Only run if we have a user, it's mounted, and we haven't already started
+      // Only run if the page is ready, we have a user, and we haven't started yet
       if (!hasMounted || !userId || didInitRef.current) return;
       didInitRef.current = true;
 
@@ -585,31 +528,61 @@ const runtime = useChatRuntime({
         
         const data = await res.json();
 
-        // 1. Store the clinical agenda for the therapist to follow
-        if (data.agenda) setSessionAgenda(data.agenda);
+        // 1. Store the agenda in the Ref (so the AI stays on track)
+        if (data.agenda) {
+          sessionAgendaRef.current = data.agenda;
+        }
 
-        // 2. Force the "Assistant" greeting into the UI thread
+        // 2. Programmatically add the AI's first greeting to the screen
         if (data.food_for_thought) {
           threadRuntime.append({
             role: "assistant",
             content: [{ type: "text", text: data.food_for_thought }]
           });
         }
-
       } catch (e) {
         console.error("Clinical Init Failed:", e);
       }
     };
 
     initializeClinicalSession();
-  }, [hasMounted, userId, userNotes, runtime]);
+  }, [hasMounted, userId, userNotes, threadRuntime, sessionAgendaRef]);
+
+  return null;
+}
 
 
 
+export default function ChatPage() {
+  const sessionAgendaRef = useRef(""); // Use a Ref to keep the runtime stable
+  const messagesRef = useRef([]); 
+  const [hasMounted, setHasMounted] = useState(false);
 
-useEffect(() => {
-    setHasMounted(true); // Set to true once the browser loads
-  }, []);
+  const router = useRouter(); // Ensure router is initialized
+  const searchParams = useSearchParams();
+
+  // ADD THIS LINE:
+  const requestedAppointmentId = searchParams.get("appointment");
+
+  useEffect(() => { setHasMounted(true); }, []);
+
+  const { userId } = useAuth();
+  const userNotes = useSearchParams().get("notes") || "";
+
+  // 2. STABLE RUNTIME (Does not depend on sessionAgenda)
+  const runtime = useChatRuntime({
+    transport: useMemo(() => new AssistantChatTransport({
+      api: "/api/chat",
+      body: {
+        userId: userId,
+        userNotes: userNotes,
+        // The transport reads the current value of the ref when it sends a message
+        get agenda() { return sessionAgendaRef.current; } 
+      },
+    }), [userId, userNotes]), 
+  });
+
+
 
   const [sessionRevision, setSessionRevision] = useState(0);
   const [isVoiceOpen, setIsVoiceOpen] = useState(() => {
@@ -771,7 +744,7 @@ useEffect(() => {
     userId={userId} 
     userNotes={userNotes} 
     hasMounted={hasMounted} 
-    setSessionAgenda={setSessionAgenda} 
+    sessionAgendaRef={sessionAgendaRef} 
   />
 
 	        <MessageSync onUpdate={(m) => (messagesRef.current = m)} />
