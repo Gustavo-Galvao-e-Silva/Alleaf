@@ -38,20 +38,41 @@ import {
   writeActiveAppointmentSession,
 } from "@/app/lib/appointments";
 
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/firebase";
+import { useBleHeartRate } from "./hooks/useBleHeartRate";
 import exerciseData from "./data/exercises.json";
 
 const ACCENT_CYCLE = ["teal", "blue", "purple", "rose"];
 
 const ICON_BY_TYPE = {
   interactive: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />
     </svg>
   ),
   asynchronous: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 2a7 7 0 017 7c0 3-1.5 5-3 6.5V18H8v-2.5C6.5 14 5 12 5 9a7 7 0 017-7z" />
       <path d="M9 22h6" />
       <path d="M10 18v4" />
@@ -64,7 +85,10 @@ function parseExercises(data) {
   return (data.exercises || []).map((raw, i) => {
     const isInteractive = raw.type === "interactive";
     const lines = isInteractive
-      ? raw.content.split("[BREAK]").map((s) => s.trim()).filter(Boolean)
+      ? raw.content
+          .split("[BREAK]")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [];
     const estimatedMinutes = isInteractive
       ? Math.max(1, Math.round((lines.length * 10) / 60))
@@ -419,12 +443,48 @@ function buildScheduledDateFromSelection(selection) {
 export default function Home() {
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       router.push("/sign-in");
     }
   }, [isLoaded, isSignedIn, router]);
+
+  // ── User profile from Firestore (for heart-data payloads) ────────────────
+  const [userProfile, setUserProfile] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.id));
+        if (snap.exists()) {
+          const d = snap.data();
+          setUserProfile({
+            userId: user.id,
+            age: d.age ?? null,
+            sex: d.sex ?? null,
+            height: d.height ?? null,
+            weight: d.weight ?? null,
+            smoker: d.smoker ?? null,
+            baselineRR: d.baselineRR ?? null,
+          });
+        }
+      } catch (err) {
+        console.error("[Home] Failed to load user profile:", err);
+      }
+    })();
+  }, [user?.id]);
+
+  // ── BLE heart-rate sensor ────────────────────────────────────────────────
+  const {
+    bleStatus,
+    sensorState,
+    connect: connectWearable,
+    meanHr,
+    isStressed,
+  } = useBleHeartRate(userProfile);
 
   const [activeExercise, setActiveExercise] = useState(null);
   const [appointments, setAppointments] = useState(() => readAppointments());
@@ -556,6 +616,31 @@ export default function Home() {
           </span>
           <h1 className={styles.greeting}>Hello, there</h1>
           <p className={styles.subtitle}>Welcome back to your wellness space</p>
+
+          {/* Wearable status chip */}
+          <div className={styles.wearableChip}>
+            {bleStatus !== "connected" ? (
+              <button
+                type="button"
+                className={styles.wearableConnectBtn}
+                onClick={connectWearable}
+                disabled={bleStatus === "connecting"}
+              >
+                {bleStatus === "connecting"
+                  ? "Connecting…"
+                  : "Connect Wearable"}
+              </button>
+            ) : (
+              <span className={styles.wearableStatus}>
+                ●{" "}
+                {sensorState === "TRACKING"
+                  ? "Monitoring heart rate"
+                  : sensorState === "DETECTING"
+                    ? "Detecting pulse…"
+                    : "Wearable connected"}
+              </span>
+            )}
+          </div>
         </section>
 
         {/* Daily Quote */}
@@ -587,77 +672,79 @@ export default function Home() {
 
           <div className={styles.scheduleCard}>
             <div className={styles.appointmentList}>
-            {scheduledAppointments.length === 0 ? (
-              <p className={styles.emptySchedule}>No scheduled meetings yet.</p>
-            ) : (
-              scheduledAppointments.map((appointment) => {
-                const scheduledDate = new Date(appointment.scheduledAt);
-                const today = new Date();
-                const isToday =
-                  scheduledDate.getFullYear() === today.getFullYear() &&
-                  scheduledDate.getMonth() === today.getMonth() &&
-                  scheduledDate.getDate() === today.getDate();
+              {scheduledAppointments.length === 0 ? (
+                <p className={styles.emptySchedule}>
+                  No scheduled meetings yet.
+                </p>
+              ) : (
+                scheduledAppointments.map((appointment) => {
+                  const scheduledDate = new Date(appointment.scheduledAt);
+                  const today = new Date();
+                  const isToday =
+                    scheduledDate.getFullYear() === today.getFullYear() &&
+                    scheduledDate.getMonth() === today.getMonth() &&
+                    scheduledDate.getDate() === today.getDate();
 
-                return (
-                  <article
-                    key={appointment.id}
-                    className={styles.appointmentCard}
-                  >
-                    <div className={styles.appointmentHeader}>
-                      <p className={styles.appointmentTitle}>
-                        {buildAppointmentTitle(appointment)}
+                  return (
+                    <article
+                      key={appointment.id}
+                      className={styles.appointmentCard}
+                    >
+                      <div className={styles.appointmentHeader}>
+                        <p className={styles.appointmentTitle}>
+                          {buildAppointmentTitle(appointment)}
+                        </p>
+                        <div className={styles.headerActions}>
+                          <span
+                            className={styles.statusBadge}
+                            data-status="scheduled"
+                          >
+                            scheduled
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.editSessionButton}
+                            onClick={() => handleEditSession(appointment)}
+                          >
+                            Edit session
+                          </button>
+                        </div>
+                      </div>
+
+                      <p className={styles.appointmentMeta}>
+                        {formatAppointmentDateTime(
+                          appointment.scheduledAt,
+                          appointment.timezone,
+                        )}
                       </p>
-                      <div className={styles.headerActions}>
-                        <span
-                          className={styles.statusBadge}
-                          data-status="scheduled"
-                        >
-                          scheduled
-                        </span>
+                      <p className={styles.appointmentRepeat}>
+                        {appointment.repeat
+                          ? `Repeats ${appointment.repeat}`
+                          : "One-time session"}
+                      </p>
+
+                      <div className={styles.appointmentActions}>
+                        {isToday && (
+                          <button
+                            type="button"
+                            className={styles.startSessionButton}
+                            onClick={() => handleStartSession(appointment.id)}
+                          >
+                            Start Session
+                          </button>
+                        )}
                         <button
                           type="button"
-                          className={styles.editSessionButton}
-                          onClick={() => handleEditSession(appointment)}
+                          className={styles.cancelSessionButton}
+                          onClick={() => handleCancelSession(appointment.id)}
                         >
-                          Edit session
+                          Cancel Session
                         </button>
                       </div>
-                    </div>
-
-                    <p className={styles.appointmentMeta}>
-                      {formatAppointmentDateTime(
-                        appointment.scheduledAt,
-                        appointment.timezone,
-                      )}
-                    </p>
-                    <p className={styles.appointmentRepeat}>
-                      {appointment.repeat
-                        ? `Repeats ${appointment.repeat}`
-                        : "One-time session"}
-                    </p>
-
-                    <div className={styles.appointmentActions}>
-                      {isToday && (
-                        <button
-                          type="button"
-                          className={styles.startSessionButton}
-                          onClick={() => handleStartSession(appointment.id)}
-                        >
-                          Start Session
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className={styles.cancelSessionButton}
-                        onClick={() => handleCancelSession(appointment.id)}
-                      >
-                        Cancel Session
-                      </button>
-                    </div>
-                  </article>
-                );
-              })
-            )}
+                    </article>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -834,7 +921,9 @@ export default function Home() {
                   <div className={styles.exerciseInfo}>
                     <p className={styles.exerciseName}>
                       {ex.name}
-                      <span className={styles.exerciseTypeBadge}>{typeLabel}</span>
+                      <span className={styles.exerciseTypeBadge}>
+                        {typeLabel}
+                      </span>
                     </p>
                     <p className={styles.exerciseDuration}>{ex.duration}</p>
                   </div>

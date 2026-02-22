@@ -92,8 +92,17 @@ export default function BleConnect() {
     if (!state.fingerPresent) {
       state.fingerPresent = true;
       state.isCalibrating = true;
+      // Reset all DSP state for fast reacquisition
+      state.ema = 0;
+      state.smoothed = 0;
+      state.lastSignal = 0;
+      state.lastBeatTime = 0;
+      state.avgIBI = 0;
+      state.signalMax = 0;
+      state.rrBuffer = [];
       setSensorState("CALIBRATING");
       setProgress(0);
+      setRrCount(0);
     }
 
     // 2. Dual-stage filtering: DC removal + smoothing
@@ -251,6 +260,19 @@ export default function BleConnect() {
         </div>
       </div>
 
+      {/* RR Intervals List */}
+      <div style={{ margin: "24px 0", textAlign: "left" }}>
+        <span style={{ fontWeight: "bold" }}>RR Intervals (ms):</span>
+        <div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid #eee", borderRadius: 6, padding: 8, background: "#fafafa" }}>
+          {dsp.current.rrBuffer.length === 0 ? (
+            <span style={{ color: "#888" }}>No beats yet</span>
+          ) : (
+            dsp.current.rrBuffer.map((rr, idx) => (
+              <div key={idx} style={{ fontSize: 14, color: "#333" }}>{rr} ms</div>
+            ))
+          )}
+        </div>
+      </div>
       <div style={styles.buttonRow}>
         <button onClick={connectToDevice} style={styles.btnDark}>
           Connect Wearable
