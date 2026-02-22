@@ -444,6 +444,35 @@
   color: #2f6f4a;
 }
 
+.headerActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.editSessionButton {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.6);
+  padding: 3px 8px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease-out, transform 150ms ease-out;
+}
+
+.editSessionButton:hover {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.editSessionButton:active {
+  transform: scale(0.96);
+}
+
 .appointmentMeta {
   margin-top: 8px;
   font-family: var(--font-sans);
