@@ -1,25 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function TypedName({ name, className }) {
   const [displayedText, setDisplayedText] = useState("");
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const indexRef = useRef(0);
 
   useEffect(() => {
-    if (currentIndex < name.length) {
-      const timeout = setTimeout(() => {
-        setDisplayedText((prev) => prev + name[currentIndex]);
-        setCurrentIndex((prev) => prev + 1);
-      }, 120); // typing speed in ms
+    indexRef.current = 0;
 
-      return () => clearTimeout(timeout);
-    }
-  }, [currentIndex, name]);
+    const interval = setInterval(() => {
+      const i = indexRef.current;
+      setDisplayedText(name.slice(0, i + 1));
+      indexRef.current += 1;
+      if (indexRef.current >= name.length) clearInterval(interval);
+    }, 120);
 
-  return (
-    <span className={className}>
-      {displayedText}
-    </span>
-  );
+    return () => clearInterval(interval);
+  }, [name]);
+
+  return <span className={className}>{displayedText}</span>;
 }

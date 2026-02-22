@@ -46,6 +46,10 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+.greetingName {
+  display: inline-block;
+}
+
 .greeting {
   font-family: var(--font-sans);
   font-size: var(--text-3xl);

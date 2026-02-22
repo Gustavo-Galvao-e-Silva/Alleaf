@@ -7,7 +7,6 @@ import dayjs from "dayjs";
 import { CalendarIcon } from "lucide-react";
 import { TimePicker } from "antd";
 import styles from "./page.module.css";
-import TypedName from "./components/TypedName";
 import BottomNav from "./components/BottomNav";
 import { cn } from "@/lib/utils";
 import {
@@ -39,8 +38,6 @@ import {
 } from "@/app/lib/appointments";
 
 import { useAuth } from "@clerk/nextjs";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/firebase";
 
 const EXERCISES = [
   {
@@ -209,21 +206,14 @@ function buildScheduledDateFromSelection(selection) {
 
 export default function Home() {
   const router = useRouter();
-  const { isSignedIn, userId } = useAuth();
-  const [userName, setUserName] = useState("");
+  const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
-    if (!isSignedIn) {
+    if (isLoaded && !isSignedIn) {
       router.push("/sign-in");
     }
-  }, [isSignedIn, router]);
+  }, [isLoaded, isSignedIn, router]);
 
-  useEffect(() => {
-    if (!userId) return;
-    getDoc(doc(db, "users", userId)).then((snap) => {
-      if (snap.exists()) setUserName(snap.data().name?.split(" ")[0] ?? "");
-    });
-  }, [userId]);
   const [appointments, setAppointments] = useState(() => readAppointments());
   const [scheduleSelection, setScheduleSelection] = useState(() =>
     getDefaultScheduleSelection(),
@@ -314,6 +304,9 @@ export default function Home() {
     setAppointments(readAppointments());
   };
 
+  if (isLoaded && !isSignedIn)
+    return <div className={styles.videoBg} aria-hidden="true" />;
+
   return (
     <>
       <div className={styles.videoBg} aria-hidden="true" />
@@ -323,9 +316,7 @@ export default function Home() {
           <span className={styles.sparkleIcon}>
             <SparkleIcon />
           </span>
-          <h1 className={styles.greeting}>
-            Hello, <TypedName name={userName || "there"} />
-          </h1>
+          <h1 className={styles.greeting}>Hello, there</h1>
           <p className={styles.subtitle}>Welcome back to your wellness space</p>
         </section>
 
