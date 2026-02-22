@@ -507,6 +507,42 @@ function MessageSync({ onUpdate }) {
   return null;
 }
 
+function ClinicalInitializer({ userId, userNotes, hasMounted, setSessionAgenda }) {
+  const threadRuntime = useThreadRuntime();
+  const didInitRef = useRef(false);
+
+  useEffect(() => {
+    const initializeClinicalSession = async () => {
+      if (!hasMounted || !userId || didInitRef.current) return;
+      didInitRef.current = true;
+
+      try {
+        const res = await fetch('http://localhost:5001/agent/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, user_notes: userNotes })
+        });
+
+        const data = await res.json();
+        if (data.agenda) setSessionAgenda(data.agenda);
+
+        if (data.food_for_thought) {
+          threadRuntime.append({
+            role: "assistant",
+            content: [{ type: "text", text: data.food_for_thought }]
+          });
+        }
+      } catch (e) {
+        console.error("Clinical Init Failed:", e);
+      }
+    };
+
+    initializeClinicalSession();
+  }, [hasMounted, userId, userNotes, threadRuntime, setSessionAgenda]);
+
+  return null;
+}
+
 export default function ChatPage() {
   const [sessionAgenda, setSessionAgenda] = useState("");
   const didInitRef = useRef(false); // Prevents the AI from greeting you twice
@@ -554,11 +590,12 @@ const runtime = useChatRuntime({
 
         // 2. Force the "Assistant" greeting into the UI thread
         if (data.food_for_thought) {
-          runtime.append({
+          threadRuntime.append({
             role: "assistant",
             content: [{ type: "text", text: data.food_for_thought }]
           });
         }
+
       } catch (e) {
         console.error("Clinical Init Failed:", e);
       }
@@ -729,6 +766,14 @@ useEffect(() => {
 
             <div className={styles.chatPanel}>
               <AssistantRuntimeProvider runtime={runtime}>
+
+<ClinicalInitializer 
+    userId={userId} 
+    userNotes={userNotes} 
+    hasMounted={hasMounted} 
+    setSessionAgenda={setSessionAgenda} 
+  />
+
 	        <MessageSync onUpdate={(m) => (messagesRef.current = m)} />
                 <VoiceInputController
                   isVoiceRunning={isVoiceRunning}
