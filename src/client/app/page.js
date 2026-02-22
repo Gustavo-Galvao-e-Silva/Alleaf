@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { format, startOfToday } from "date-fns";
 import dayjs from "dayjs";
@@ -39,8 +39,6 @@ import {
 } from "@/app/lib/appointments";
 
 import { useAuth } from "@clerk/nextjs";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 
@@ -147,8 +145,12 @@ function QuoteIcon() {
       <rect x="16" y="6" width="4" height="16" rx="2" />
     </svg>
   );
+}
+
 function toLocalDateTimeInputValue(date) {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+  const localDate = new Date(
+    date.getTime() - date.getTimezoneOffset() * 60 * 1000,
+  );
   return localDate.toISOString().slice(0, 16);
 }
 
@@ -158,7 +160,9 @@ function toLocalDateInputValue(date) {
 
 function dateStringToDate(dateString) {
   if (!dateString) return null;
-  const [year, month, day] = dateString.split("-").map((value) => Number(value));
+  const [year, month, day] = dateString
+    .split("-")
+    .map((value) => Number(value));
   if (!year || !month || !day) return null;
   const date = new Date(year, month - 1, day);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -235,9 +239,14 @@ export default function Home() {
   }, [scheduleSelection.time]);
 
   const scheduledAppointments = useMemo(() => {
-    return [...appointments].sort((first, second) => {
-      return new Date(first.scheduledAt).getTime() - new Date(second.scheduledAt).getTime();
-    }).filter((appointment) => appointment.status === "scheduled");
+    return [...appointments]
+      .sort((first, second) => {
+        return (
+          new Date(first.scheduledAt).getTime() -
+          new Date(second.scheduledAt).getTime()
+        );
+      })
+      .filter((appointment) => appointment.status === "scheduled");
   }, [appointments]);
 
   const resetScheduleFields = () => {
@@ -280,7 +289,8 @@ export default function Home() {
 
   const handleStartSession = (appointmentId) => {
     const startedAppointment = markAppointmentSessionStarted(appointmentId);
-    if (!startedAppointment || startedAppointment.status !== "scheduled") return;
+    if (!startedAppointment || startedAppointment.status !== "scheduled")
+      return;
 
     const activeSession = {
       appointmentId: startedAppointment.id,
@@ -290,7 +300,9 @@ export default function Home() {
 
     writeActiveAppointmentSession(activeSession);
     setAppointments(readAppointments());
-    router.push(`/chat?appointment=${encodeURIComponent(startedAppointment.id)}`);
+    router.push(
+      `/chat?appointment=${encodeURIComponent(startedAppointment.id)}`,
+    );
   };
 
   const handleCancelSession = (appointmentId) => {
@@ -328,211 +340,248 @@ export default function Home() {
         </section>
 
         {/* Schedule Section */}
-      <section className={styles.scheduleSection}>
-        <div className={styles.scheduleHeader}>
-          <h2 className={styles.sectionTitle}>Schedule</h2>
-          <button
-            type="button"
-            className={styles.openScheduleButton}
-            onClick={() => {
-              resetScheduleFields();
-              setIsScheduleDialogOpen(true);
-            }}
-          >
-            Schedule Meeting
-          </button>
-        </div>
+        <section className={styles.scheduleSection}>
+          <div className={styles.scheduleHeader}>
+            <h2 className={styles.sectionTitle}>Schedule</h2>
+            <button
+              type="button"
+              className={styles.openScheduleButton}
+              onClick={() => {
+                resetScheduleFields();
+                setIsScheduleDialogOpen(true);
+              }}
+            >
+              Schedule Meeting
+            </button>
+          </div>
 
-        <div className={styles.appointmentList}>
-          {scheduledAppointments.length === 0 ? (
-            <p className={styles.emptySchedule}>No scheduled meetings yet.</p>
-          ) : (
-            scheduledAppointments.map((appointment) => {
-              const scheduledDate = new Date(appointment.scheduledAt);
-              const today = new Date();
-              const isToday =
-                scheduledDate.getFullYear() === today.getFullYear() &&
-                scheduledDate.getMonth() === today.getMonth() &&
-                scheduledDate.getDate() === today.getDate();
+          <div className={styles.appointmentList}>
+            {scheduledAppointments.length === 0 ? (
+              <p className={styles.emptySchedule}>No scheduled meetings yet.</p>
+            ) : (
+              scheduledAppointments.map((appointment) => {
+                const scheduledDate = new Date(appointment.scheduledAt);
+                const today = new Date();
+                const isToday =
+                  scheduledDate.getFullYear() === today.getFullYear() &&
+                  scheduledDate.getMonth() === today.getMonth() &&
+                  scheduledDate.getDate() === today.getDate();
 
-              return (
-                <article key={appointment.id} className={styles.appointmentCard}>
-                  <div className={styles.appointmentHeader}>
-                    <p className={styles.appointmentTitle}>
-                      {buildAppointmentTitle(appointment)}
+                return (
+                  <article
+                    key={appointment.id}
+                    className={styles.appointmentCard}
+                  >
+                    <div className={styles.appointmentHeader}>
+                      <p className={styles.appointmentTitle}>
+                        {buildAppointmentTitle(appointment)}
+                      </p>
+                      <span
+                        className={styles.statusBadge}
+                        data-status="scheduled"
+                      >
+                        scheduled
+                      </span>
+                    </div>
+
+                    <p className={styles.appointmentMeta}>
+                      {formatAppointmentDateTime(
+                        appointment.scheduledAt,
+                        appointment.timezone,
+                      )}
                     </p>
-                    <span className={styles.statusBadge} data-status="scheduled">
-                      scheduled
-                    </span>
-                  </div>
+                    <p className={styles.appointmentRepeat}>
+                      {appointment.repeat
+                        ? `Repeats ${appointment.repeat}`
+                        : "One-time session"}
+                    </p>
 
-                  <p className={styles.appointmentMeta}>
-                    {formatAppointmentDateTime(
-                      appointment.scheduledAt,
-                      appointment.timezone,
+                    {appointment.therapistNotes ? (
+                      <p className={styles.appointmentNotes}>
+                        {appointment.therapistNotes}
+                      </p>
+                    ) : (
+                      <p className={styles.appointmentNotesPlaceholder}>
+                        No therapist notes added.
+                      </p>
                     )}
-                  </p>
-                  <p className={styles.appointmentRepeat}>
-                    {appointment.repeat
-                      ? `Repeats ${appointment.repeat}`
-                      : "One-time session"}
-                  </p>
 
-                  {appointment.therapistNotes ? (
-                    <p className={styles.appointmentNotes}>{appointment.therapistNotes}</p>
-                  ) : (
-                    <p className={styles.appointmentNotesPlaceholder}>
-                      No therapist notes added.
-                    </p>
-                  )}
-
-                  <div className={styles.appointmentActions}>
-                    {isToday && (
+                    <div className={styles.appointmentActions}>
+                      {isToday && (
+                        <button
+                          type="button"
+                          className={styles.startSessionButton}
+                          onClick={() => handleStartSession(appointment.id)}
+                        >
+                          Start Session
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className={styles.startSessionButton}
-                        onClick={() => handleStartSession(appointment.id)}
+                        className={styles.cancelSessionButton}
+                        onClick={() => handleCancelSession(appointment.id)}
                       >
-                        Start Session
+                        Cancel Session
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      className={styles.cancelSessionButton}
-                      onClick={() => handleCancelSession(appointment.id)}
-                    >
-                      Cancel Session
-                    </button>
-                  </div>
-                </article>
-              );
-            })
-          )}
-        </div>
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
 
-        <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
-          <DialogContent className={styles.scheduleDialog}>
-            <DialogHeader>
-              <DialogTitle className={styles.scheduleDialogTitle}>
-                Schedule Meeting
-              </DialogTitle>
-            </DialogHeader>
-            <form className={styles.scheduleForm} onSubmit={handleCreateAppointment}>
-              <div className={styles.dropdownField}>
-                <p className={styles.formLabel}><span className={styles.formLabelText}>Date<span className={styles.requiredStar}>*</span></span></p>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={cn(
-                        styles.datePickerTrigger,
-                        !scheduleSelection.date && styles.datePickerTriggerEmpty,
-                      )}
+          <Dialog
+            open={isScheduleDialogOpen}
+            onOpenChange={setIsScheduleDialogOpen}
+          >
+            <DialogContent className={styles.scheduleDialog}>
+              <DialogHeader>
+                <DialogTitle className={styles.scheduleDialogTitle}>
+                  Schedule Meeting
+                </DialogTitle>
+              </DialogHeader>
+              <form
+                className={styles.scheduleForm}
+                onSubmit={handleCreateAppointment}
+              >
+                <div className={styles.dropdownField}>
+                  <p className={styles.formLabel}>
+                    <span className={styles.formLabelText}>
+                      Date<span className={styles.requiredStar}>*</span>
+                    </span>
+                  </p>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          styles.datePickerTrigger,
+                          !scheduleSelection.date &&
+                            styles.datePickerTriggerEmpty,
+                        )}
+                      >
+                        <CalendarIcon
+                          className={styles.datePickerTriggerIcon}
+                        />
+                        {selectedScheduleDate ? (
+                          format(selectedScheduleDate, "PPP")
+                        ) : (
+                          <span>Select date</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className={styles.datePickerPopoverContent}
+                      align="start"
                     >
-                      <CalendarIcon className={styles.datePickerTriggerIcon} />
-                      {selectedScheduleDate ? (
-                        format(selectedScheduleDate, "PPP")
-                      ) : (
-                        <span>Select date</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className={styles.datePickerPopoverContent}
-                    align="start"
-                  >
-                    <Calendar
-                      mode="single"
-                      selected={selectedScheduleDate || undefined}
-                      onSelect={(value) =>
-                        setScheduleSelection((previous) => ({
-                          ...previous,
-                          date: value ? toLocalDateInputValue(value) : "",
-                        }))
-                      }
-                      disabled={{ before: startOfToday() }}
-                      captionLayout="dropdown"
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className={styles.dropdownField}>
-                <p className={styles.formLabel}><span className={styles.formLabelText}>Time<span className={styles.requiredStar}>*</span></span></p>
-                <TimePicker
-                  value={selectedScheduleTime}
-                  format="HH:mm"
-                  minuteStep={5}
-                  allowClear={false}
-                  className={styles.timePicker}
-                  popupClassName={styles.timePickerDropdown}
-                  getPopupContainer={(trigger) => trigger.parentElement || trigger}
-                  onChange={(_, timeString) =>
-                    setScheduleSelection((previous) => ({
-                      ...previous,
-                      time: typeof timeString === "string" ? timeString : "",
-                    }))
-                  }
-                />
-              </div>
-
-              <div className={styles.repeatField}>
-                <p className={styles.formLabel}><span className={styles.formLabelText}>Repeat <span className={styles.optionalTag}>(optional)</span></span></p>
-                <div className={styles.repeatOptions}>
-                  {REPEAT_OPTIONS.map((repeatValue) => (
-                    <button
-                      key={repeatValue}
-                      type="button"
-                      className={styles.repeatOption}
-                      data-active={scheduleSelection.repeat === repeatValue}
-                      onClick={() =>
-                        setScheduleSelection((previous) => ({
-                          ...previous,
-                          repeat:
-                            previous.repeat === repeatValue
-                              ? null
-                              : repeatValue,
-                        }))
-                      }
-                    >
-                      {repeatValue}
-                    </button>
-                  ))}
+                      <Calendar
+                        mode="single"
+                        selected={selectedScheduleDate || undefined}
+                        onSelect={(value) =>
+                          setScheduleSelection((previous) => ({
+                            ...previous,
+                            date: value ? toLocalDateInputValue(value) : "",
+                          }))
+                        }
+                        disabled={{ before: startOfToday() }}
+                        captionLayout="dropdown"
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
-              </div>
 
-              <label className={styles.formLabel}>
-                <span className={styles.formLabelText}>Notes for therapist <span className={styles.optionalTag}>(optional)</span></span>
-                <textarea
-                  value={therapistNotes}
-                  onChange={(event) => setTherapistNotes(event.target.value)}
-                  className={styles.formTextarea}
-                  rows={3}
-                  placeholder="What should Samantha focus on in this session?"
-                />
-              </label>
+                <div className={styles.dropdownField}>
+                  <p className={styles.formLabel}>
+                    <span className={styles.formLabelText}>
+                      Time<span className={styles.requiredStar}>*</span>
+                    </span>
+                  </p>
+                  <TimePicker
+                    value={selectedScheduleTime}
+                    format="HH:mm"
+                    minuteStep={5}
+                    allowClear={false}
+                    className={styles.timePicker}
+                    popupClassName={styles.timePickerDropdown}
+                    getPopupContainer={(trigger) =>
+                      trigger.parentElement || trigger
+                    }
+                    onChange={(_, timeString) =>
+                      setScheduleSelection((previous) => ({
+                        ...previous,
+                        time: typeof timeString === "string" ? timeString : "",
+                      }))
+                    }
+                  />
+                </div>
 
-              {formError ? <p className={styles.formError}>{formError}</p> : null}
+                <div className={styles.repeatField}>
+                  <p className={styles.formLabel}>
+                    <span className={styles.formLabelText}>
+                      Repeat{" "}
+                      <span className={styles.optionalTag}>(optional)</span>
+                    </span>
+                  </p>
+                  <div className={styles.repeatOptions}>
+                    {REPEAT_OPTIONS.map((repeatValue) => (
+                      <button
+                        key={repeatValue}
+                        type="button"
+                        className={styles.repeatOption}
+                        data-active={scheduleSelection.repeat === repeatValue}
+                        onClick={() =>
+                          setScheduleSelection((previous) => ({
+                            ...previous,
+                            repeat:
+                              previous.repeat === repeatValue
+                                ? null
+                                : repeatValue,
+                          }))
+                        }
+                      >
+                        {repeatValue}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div className={styles.dialogActions}>
-                <button
-                  type="button"
-                  className={styles.dialogCancelButton}
-                  onClick={() => setIsScheduleDialogOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className={styles.scheduleButton}>
-                  Schedule
-                </button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </section>
+                <label className={styles.formLabel}>
+                  <span className={styles.formLabelText}>
+                    Notes for therapist{" "}
+                    <span className={styles.optionalTag}>(optional)</span>
+                  </span>
+                  <textarea
+                    value={therapistNotes}
+                    onChange={(event) => setTherapistNotes(event.target.value)}
+                    className={styles.formTextarea}
+                    rows={3}
+                    placeholder="What should Samantha focus on in this session?"
+                  />
+                </label>
 
-      {/* Wellness Exercises */}
+                {formError ? (
+                  <p className={styles.formError}>{formError}</p>
+                ) : null}
+
+                <div className={styles.dialogActions}>
+                  <button
+                    type="button"
+                    className={styles.dialogCancelButton}
+                    onClick={() => setIsScheduleDialogOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className={styles.scheduleButton}>
+                    Schedule
+                  </button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </section>
+
+        {/* Wellness Exercises */}
         <section className={styles.exercisesSection}>
           <h2 className={styles.sectionTitle}>Wellness Exercises</h2>
           <div className={styles.exerciseList}>
