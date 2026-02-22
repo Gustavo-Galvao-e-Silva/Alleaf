@@ -307,6 +307,48 @@
   text-align: right;
 }
 
+/* ── Date Picker ── */
+.datePickerTrigger {
+  justify-content: flex-start;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  gap: 8px;
+  height: auto;
+  width: 100%;
+  max-width: 220px;
+}
+
+.datePickerTrigger:hover {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: rgba(168, 198, 134, 0.6);
+}
+
+.datePickerEmpty {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.datePickerIcon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.datePickerPopover {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+  padding: 0;
+  z-index: 50;
+}
+
 /* ── Form Inputs ── */
 .input {
   width: 100%;

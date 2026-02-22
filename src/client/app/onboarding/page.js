@@ -1,6 +1,16 @@
 "use client";
 import { useState } from "react";
 import { useUser } from "@clerk/nextjs";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import styles from "./page.module.css";
 
 export default function OnboardingPage() {
@@ -8,7 +18,7 @@ export default function OnboardingPage() {
 
   const [form, setForm] = useState({
     name: "",
-    age: "",
+    dateOfBirth: "",
     sex: "",
     height: "",
     weight: "",
@@ -27,7 +37,7 @@ export default function OnboardingPage() {
     e.preventDefault();
     if (
       !form.name ||
-      !form.age ||
+      !form.dateOfBirth ||
       !form.sex ||
       !form.height ||
       !form.weight ||
@@ -93,16 +103,49 @@ export default function OnboardingPage() {
             </div>
 
             <div className={styles.field}>
-              <label className={styles.label}>Age</label>
-              <input
-                className={styles.input}
-                name="age"
-                type="text"
-                inputMode="numeric"
-                value={form.age}
-                onChange={handleChange}
-                placeholder="25"
-              />
+              <label className={styles.label}>Date of Birth</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      styles.datePickerTrigger,
+                      !form.dateOfBirth && styles.datePickerEmpty,
+                    )}
+                  >
+                    <CalendarIcon className={styles.datePickerIcon} />
+                    {form.dateOfBirth
+                      ? format(
+                          new Date(form.dateOfBirth + "T00:00:00"),
+                          "MMMM d, yyyy",
+                        )
+                      : "Select date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className={styles.datePickerPopover}
+                  align="start"
+                >
+                  <Calendar
+                    mode="single"
+                    selected={
+                      form.dateOfBirth
+                        ? new Date(form.dateOfBirth + "T00:00:00")
+                        : undefined
+                    }
+                    onSelect={(date) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        dateOfBirth: date ? format(date, "yyyy-MM-dd") : "",
+                      }))
+                    }
+                    disabled={{ after: new Date() }}
+                    captionLayout="dropdown"
+                    defaultMonth={new Date(2000, 0)}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className={styles.field}>
