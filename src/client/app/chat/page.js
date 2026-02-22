@@ -293,8 +293,8 @@ function extractAssistantText(message) {
 }
 
 function VoiceOutputController({ isVoiceRunning, onVoiceOutputError }) {
-  const messages = useAuiState((state) => state.thread.messages);
   const isThreadRunning = useAuiState((state) => state.thread.isRunning);
+  const messages = useAuiState((state) => state.thread.messages);
 
   const spokenMessageIdsRef = useRef(new Set());
   const lastSpokenSignatureRef = useRef("");
@@ -498,7 +498,18 @@ function deriveAppointmentSessionState(requestedAppointmentId, revision) {
   };
 }
 
+// This component "lives" inside the provider, so it can see the messages
+function MessageSync({ onUpdate }) {
+  const messages = useAuiState((state) => state.thread.messages);
+  useEffect(() => {
+    onUpdate(messages);
+  }, [messages, onUpdate]);
+  return null;
+}
+
 export default function ChatPage() {
+  const messagesRef = useRef([]); // This will hold our real transcript
+
   const [hasMounted, setHasMounted] = useState(false);
 
 useEffect(() => {
@@ -612,10 +623,14 @@ const runtime = useChatRuntime({
   stopVoiceMode();
   try {
     // 1. Trigger the Python Wrap-up Node
+    const chatTranscript = messagesRef.current; 
+
+    console.log("Sending transcript length:", chatTranscript.length); // Debug log
+	 
     const res = await fetch('http://localhost:5001/therapy/end', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, transcript: "User ended the session." })
+      body: JSON.stringify({ user_id: userId, transcript: chatTranscript })
     });
     const data = await res.json();
 
@@ -670,6 +685,7 @@ const runtime = useChatRuntime({
 
             <div className={styles.chatPanel}>
               <AssistantRuntimeProvider runtime={runtime}>
+	        <MessageSync onUpdate={(m) => (messagesRef.current = m)} />
                 <VoiceInputController
                   isVoiceRunning={isVoiceRunning}
                   onVoiceInputError={handleVoiceInputError}

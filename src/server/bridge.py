@@ -120,6 +120,8 @@ def end_session():
         raw_transcript = data.get('transcript', [])
         user_id = data.get('user_id') or data.get('userId') # Handle both naming styles
 
+        print(f"DEBUG: First message structure: {raw_transcript[0] if raw_transcript else 'EMPTY'}")
+
         # --- SAFE PARSING START ---
         history = []
         for m in raw_transcript:
