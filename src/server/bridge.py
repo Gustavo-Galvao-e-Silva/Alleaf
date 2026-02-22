@@ -114,17 +114,24 @@ def end_session():
     summary_text = result.get('summary', "Session ended.")
     vector = get_embedding(summary_text)
 
-    db.client.upsert(
-        db.COLLECTION,
-        id=int(time.time()),
-        vector=vector,
-        payload={
-            "text": summary_text,
-            "user_id": data.get('user_id'),
-            "type": "session_summary"
-        }
-    )
-    db.client.flush(db.COLLECTION)
+    # --- THE FIX: Wrap the upsert in a retry/reconnect block ---
+    try:
+        db.ensure_connected() # Make sure we weren't kicked out during the stream
+        db.client.upsert(
+            db.COLLECTION,
+            id=int(time.time()),
+            vector=vector,
+            payload={
+                "text": summary_text,
+                "user_id": data.get('user_id'),
+                "type": "session_summary"
+            }
+        )
+        db.client.flush(db.COLLECTION)
+    except Exception as e:
+        print(f"Upsert failed after stream: {e}. Retrying once...")
+        db.client.connect() # Force a hard reconnect
+        db.client.upsert(db.COLLECTION, id=int(time.time()), vector=vector, payload={"text": summary_text, "user_id": data.get('user_id'), "type": "session_summary"})
 
     return jsonify({"exercises": result['exercises']})
 
