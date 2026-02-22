@@ -108,6 +108,12 @@ def end_session():
 
 @app.route('/init', methods=['GET'])
 def init():
+    should_reset = request.args.get('reset', 'false').lower() == 'true'
+
+    if should_reset:
+        db.reset_db()
+        return jsonify({"status": "database_wiped_and_restarted"})
+
     db.init_db()
     return jsonify({"status": "ready"})
 
