@@ -88,11 +88,16 @@ def run_session():
     history.append(HumanMessage(content=data.get('message')))
 
     state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', [])}
+
     result = therapist_node(state)
 
     return jsonify({
-        "therapy_response": result['transcript'][-1].content,
-        "full_transcript": [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} for m in result['transcript']]
+        "therapy_response": str(result['transcript'][-1].content),
+        # FIX: Ensure every message content is forced to a string
+        "full_transcript": [
+            {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": str(m.content)} 
+            for m in result['transcript']
+        ]
     })
 
 @app.route('/agent/end_session', methods=['POST'])
