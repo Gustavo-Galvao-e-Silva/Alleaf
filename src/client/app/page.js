@@ -34,6 +34,7 @@ import {
   markAppointmentSessionStarted,
   readActiveAppointmentSession,
   readAppointments,
+  updateAppointmentById,
   writeActiveAppointmentSession,
 } from "@/app/lib/appointments";
 
@@ -221,6 +222,7 @@ export default function Home() {
   const [therapistNotes, setTherapistNotes] = useState("");
   const [formError, setFormError] = useState("");
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const [editingAppointmentId, setEditingAppointmentId] = useState(null);
   const selectedScheduleDate = dateStringToDate(scheduleSelection.date);
   const selectedScheduleTime = useMemo(() => {
     if (!scheduleSelection.time) return null;
@@ -245,6 +247,19 @@ export default function Home() {
     setFormError("");
   };
 
+  const handleEditSession = (appointment) => {
+    const scheduled = new Date(appointment.scheduledAt);
+    setScheduleSelection({
+      date: toLocalDateInputValue(scheduled),
+      time: toLocalDateTimeInputValue(scheduled).slice(11, 16),
+      repeat: appointment.repeat || null,
+    });
+    setTherapistNotes(appointment.therapistNotes || "");
+    setEditingAppointmentId(appointment.id);
+    setFormError("");
+    setIsScheduleDialogOpen(true);
+  };
+
   const handleCreateAppointment = (event) => {
     event.preventDefault();
     setFormError("");
@@ -265,15 +280,26 @@ export default function Home() {
       return;
     }
 
-    createAppointment({
-      scheduledAt: scheduledDate.toISOString(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      therapistNotes,
-      repeat: scheduleSelection.repeat,
-    });
+    if (editingAppointmentId) {
+      updateAppointmentById(editingAppointmentId, (prev) => ({
+        ...prev,
+        scheduledAt: scheduledDate.toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        therapistNotes,
+        repeat: scheduleSelection.repeat || null,
+      }));
+    } else {
+      createAppointment({
+        scheduledAt: scheduledDate.toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        therapistNotes,
+        repeat: scheduleSelection.repeat,
+      });
+    }
 
     setAppointments(readAppointments());
     resetScheduleFields();
+    setEditingAppointmentId(null);
     setIsScheduleDialogOpen(false);
   };
 
@@ -339,6 +365,7 @@ export default function Home() {
               className={styles.openScheduleButton}
               onClick={() => {
                 resetScheduleFields();
+                setEditingAppointmentId(null);
                 setIsScheduleDialogOpen(true);
               }}
             >
@@ -367,12 +394,21 @@ export default function Home() {
                       <p className={styles.appointmentTitle}>
                         {buildAppointmentTitle(appointment)}
                       </p>
-                      <span
-                        className={styles.statusBadge}
-                        data-status="scheduled"
-                      >
-                        scheduled
-                      </span>
+                      <div className={styles.headerActions}>
+                        <span
+                          className={styles.statusBadge}
+                          data-status="scheduled"
+                        >
+                          scheduled
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.editSessionButton}
+                          onClick={() => handleEditSession(appointment)}
+                        >
+                          Edit session
+                        </button>
+                      </div>
                     </div>
 
                     <p className={styles.appointmentMeta}>
@@ -423,12 +459,15 @@ export default function Home() {
 
           <Dialog
             open={isScheduleDialogOpen}
-            onOpenChange={setIsScheduleDialogOpen}
+            onOpenChange={(open) => {
+              setIsScheduleDialogOpen(open);
+              if (!open) setEditingAppointmentId(null);
+            }}
           >
             <DialogContent className={styles.scheduleDialog}>
               <DialogHeader>
                 <DialogTitle className={styles.scheduleDialogTitle}>
-                  Schedule Meeting
+                  {editingAppointmentId ? "Edit Session" : "Schedule Meeting"}
                 </DialogTitle>
               </DialogHeader>
               <form
@@ -564,7 +603,7 @@ export default function Home() {
                     Cancel
                   </button>
                   <button type="submit" className={styles.scheduleButton}>
-                    Schedule
+                    {editingAppointmentId ? "Save Changes" : "Schedule"}
                   </button>
                 </div>
               </form>
