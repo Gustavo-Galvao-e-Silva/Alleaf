@@ -190,7 +190,8 @@ export default function HardwareCalibrationPage() {
     state.lastSignal = signal;
   };
 
-  // --- BLE connection ---
+
+
   const connectToDevice = async () => {
     setPhase("CONNECTING");
     setStatusMsg("Searching for wearable...");
@@ -201,35 +202,31 @@ export default function HardwareCalibrationPage() {
         optionalServices: [SERVICE_UUID],
       });
 
-      setStatusMsg("Connecting...");
+      console.log(">> Device Selected:", device.name);
+      setStatusMsg("Connecting to GATT Server...");
+
       const server = await device.gatt.connect();
+      console.log(">> GATT Server Connected");
 
-      device.addEventListener("gattserverdisconnected", () => {
-        setStatusMsg("Disconnected");
-        setRxCharacteristic(null);
-        setSensorState("NO_FINGER");
-        setBeatProgress(0);
-        dsp.current.fingerPresent = false;
-        if (!calibrationStartedRef.current) {
-          dsp.current.rrBuffer = [];
-          setPhase("IDLE");
-        }
-      });
-
+      setStatusMsg("Discovering Primary Service...");
       const service = await server.getPrimaryService(SERVICE_UUID);
-      const characteristic =
-        await service.getCharacteristic(CHARACTERISTIC_UUID);
+      console.log(">> Service Found:", SERVICE_UUID);
+
+      setStatusMsg("Getting Characteristic...");
+      const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+      console.log(">> Characteristic Found:", CHARACTERISTIC_UUID);
+
       setRxCharacteristic(characteristic);
       await characteristic.startNotifications();
       characteristic.addEventListener("characteristicvaluechanged", handleData);
+
       setStatusMsg("Connected!");
       setPhase("WAITING_FINGER");
     } catch (error) {
-      console.error("Bluetooth Error:", error);
+      console.error("Detailed Bluetooth Error:", error);
       setPhase("ERROR");
-      setErrorMsg(
-        "Could not connect to wearable. Make sure it's powered on and nearby.",
-      );
+      // This will now show the specific error like "GATT Error" or "Service not found"
+      setErrorMsg(`Bluetooth Error: ${error.message}`);
     }
   };
 
