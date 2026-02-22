@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import styles from "./page.module.css";
 import BottomNav from "../components/BottomNav";
+import { useUser } from "@clerk/nextjs";
 
 const promptList = [
   "What is one small win you had today?",
@@ -80,6 +81,10 @@ function NoteEditor({ title, body, onTitleChange, onBodyChange, titlePlaceholder
 }
 
 export default function JournalPage() {
+  // 1. Auth Hook
+  const { user, isLoaded, isSignedIn } = useUser();
+
+  // 2. Local State
   const [activeTab, setActiveTab] = useState(0);
   const [freeTitle, setFreeTitle] = useState("");
   const [freeBody, setFreeBody] = useState("");
@@ -95,11 +100,12 @@ export default function JournalPage() {
 
   const [history, setHistory] = useState([]);
   const [editingId, setEditingId] = useState(null);
-
   const [freeDirty, setFreeDirty] = useState(false);
   const [promptedDirty, setPromptedDirty] = useState(false);
   const [saveLabel, setSaveLabel] = useState("");
+  const [saving, setSaving] = useState(false);
 
+  // 3. Input Handlers
   const handleFreeTitleChange = (val) => {
     setFreeTitle(val);
     if (!freeDirty && val) setFreeDirty(true);
@@ -121,52 +127,77 @@ export default function JournalPage() {
     if (saveLabel) setSaveLabel("");
   };
 
-  useEffect(() => {
-    if (saveLabel === "saved") {
-      const timer = setTimeout(() => setSaveLabel(""), 2000);
-      return () => clearTimeout(timer);
+  // 4. Persistence Logic
+  const handleSave = async () => {
+    // Safety guard for Clerk loading
+    if (!isLoaded || !isSignedIn || !user) {
+      alert("Authentication not ready. Please wait.");
+      return;
     }
-  }, [saveLabel]);
 
-  const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
-  const showSave = isDirty && saveLabel !== "saved";
-
-  const handleSave = () => {
     const title = activeTab === 0 ? freeTitle : promptedTitle;
     const body = activeTab === 0 ? freeBody : promptedBody;
     const type = activeTab === 0 ? "Free Writing" : "Prompted";
     const { date, time } = formatDateTime();
 
-    const entry = {
-      id: editingId || Date.now(),
-      title: title || "Untitled",
-      date,
-      time,
-      type,
-      body,
-      preview: body.length > 80 ? body.slice(0, 80) + "…" : body,
-    };
+    if (!body.trim()) return;
 
-    if (editingId) {
-      setHistory((prev) => prev.map((h) => (h.id === editingId ? entry : h)));
-    } else {
-      setHistory((prev) => [entry, ...prev]);
-    }
-    setSaveLabel("saved");
+    const fullTextForAI = `Title: ${title || "Untitled"}\nContent: ${body}`;
+    setSaving(true);
 
-    if (!editingId) {
-      if (activeTab === 0) {
-        setFreeTitle("");
-        setFreeBody("");
+    try {
+      // Hit the Next.js API route which proxies to Python
+      const response = await fetch('/api/journal/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id, 
+          text: fullTextForAI,
+          id: editingId || Date.now(),
+        })
+      });
+
+      if (!response.ok) throw new Error("Failed to sync with backend");
+
+      const entry = {
+        id: editingId || Date.now(),
+        title: title || "Untitled",
+        date,
+        time,
+        type,
+        body,
+        preview: body.length > 80 ? body.slice(0, 80) + "…" : body,
+      };
+
+      if (editingId) {
+        setHistory((prev) => prev.map((h) => (h.id === editingId ? entry : h)));
+      } else {
+        setHistory((prev) => [entry, ...prev]);
       }
-      if (activeTab === 1) {
-        setPromptedTitle("");
-        setPromptedBody("");
-      }
-    }
 
-    if (activeTab === 0) setFreeDirty(false);
-    if (activeTab === 1) setPromptedDirty(false);
+      setSaveLabel("saved");
+      setEditingId(null);
+
+      // Reset editors for new entries
+      if (!editingId) {
+        if (activeTab === 0) {
+          setFreeTitle("");
+          setFreeBody("");
+        } else {
+          setPromptedTitle("");
+          setPromptedBody("");
+        }
+      }
+
+      setFreeDirty(false);
+      setPromptedDirty(false);
+
+    } catch (err) {
+      console.error("Journal Save Error:", err);
+      alert("Could not save to the cloud. Check if the backend is running.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleHistoryClick = (entry) => {
@@ -185,6 +216,18 @@ export default function JournalPage() {
     setActiveTab(tabIndex);
   };
 
+  // 5. Effects
+  useEffect(() => {
+    if (saveLabel === "saved") {
+      const timer = setTimeout(() => setSaveLabel(""), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveLabel]);
+
+  // 6. UI Helpers
+  const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
+  const showSave = isDirty && saveLabel !== "saved";
+
   return (
     <>
       <div className={styles.bg} aria-hidden="true" />
@@ -195,13 +238,13 @@ export default function JournalPage() {
               <h1 className={styles.title}>Journal</h1>
               <p className={styles.subtitle}>Express your thoughts</p>
             </div>
-            {(showSave || saveLabel === "saved") && (
+            {(showSave || saveLabel === "saved" || saving) && (
               <button
                 className={`${styles.saveBtn} ${saveLabel === "saved" ? styles.saveBtnDone : ""}`}
-                onClick={saveLabel === "saved" ? undefined : handleSave}
-                disabled={saveLabel === "saved"}
+                onClick={saveLabel === "saved" || saving ? undefined : handleSave}
+                disabled={saveLabel === "saved" || saving}
               >
-                {saveLabel === "saved" ? "Saved!" : "Save"}
+                {saving ? "Saving..." : saveLabel === "saved" ? "Saved!" : "Save"}
               </button>
             )}
           </div>

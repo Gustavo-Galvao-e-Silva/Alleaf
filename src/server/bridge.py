@@ -115,37 +115,69 @@ def run_session():
 @app.route('/agent/end_session', methods=['POST'])
 def end_session():
     _, _, wrap_up_node = get_agent_nodes()
-    data = request.json
-    raw_transcript = data.get('transcript', [])
-    history = [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in raw_transcript]
-
-    state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', []), "agenda": data.get('agenda')}
-    result = wrap_up_node(state)
-
-    # --- THE FIX: Actually save to Actian ---
-    summary_text = result.get('summary', "Session ended.")
-    vector = get_embedding(summary_text)
-
-    # --- THE FIX: Wrap the upsert in a retry/reconnect block ---
     try:
-        db.ensure_connected() # Make sure we weren't kicked out during the stream
-        db.client.upsert(
-            db.COLLECTION,
-            id=int(time.time()),
-            vector=vector,
-            payload={
-                "text": summary_text,
-                "user_id": data.get('user_id'),
-                "type": "session_summary"
-            }
-        )
-        db.client.flush(db.COLLECTION)
-    except Exception as e:
-        print(f"Upsert failed after stream: {e}. Retrying once...")
-        db.client.connect() # Force a hard reconnect
-        db.client.upsert(db.COLLECTION, id=int(time.time()), vector=vector, payload={"text": summary_text, "user_id": data.get('user_id'), "type": "session_summary"})
+        data = request.json
+        raw_transcript = data.get('transcript', [])
+        user_id = data.get('user_id') or data.get('userId') # Handle both naming styles
 
-    return jsonify({"exercises": result['exercises']})
+        print(f"DEBUG: First message structure: {raw_transcript[0] if raw_transcript else 'EMPTY'}")
+
+        # --- SAFE PARSING START ---
+        history = []
+        for m in raw_transcript:
+            if isinstance(m, str): continue # Skip if it's accidentally a raw string
+            
+            raw_content = m.get('content', "")
+            # Flatten the Assistant UI part list if necessary
+            if isinstance(raw_content, list):
+                text = " ".join([part.get('text', '') for part in raw_content if part.get('type') == 'text'])
+            else:
+                text = str(raw_content)
+
+            if not text.strip(): continue
+
+            if m.get('role') == 'user':
+                history.append(HumanMessage(content=text))
+            else:
+                history.append(AIMessage(content=text))
+        # --- SAFE PARSING END ---
+
+        state = {
+            "user_id": user_id, 
+            "transcript": history, 
+            "evidence": data.get('evidence', []), 
+            "agenda": data.get('agenda')
+        }
+        
+        # 1. Run the clinical wrap-up (LangChain)
+        result = wrap_up_node(state)
+
+        # 2. Save the session recap to Actian Vector DB
+        summary_text = result.get('summary', "Session ended.")
+        vector = get_embedding(summary_text)
+
+        try:
+            db.ensure_connected()
+            db.client.upsert(
+                db.COLLECTION,
+                id=int(time.time()),
+                vector=vector,
+                payload={
+                    "text": summary_text,
+                    "user_id": user_id,
+                    "type": "session_summary"
+                }
+            )
+            db.client.flush(db.COLLECTION)
+        except Exception as upsert_error:
+            print(f"Vector DB sync failed: {upsert_error}")
+
+        # 3. Send exercises back to Next.js to be saved to Firestore
+        return jsonify({"exercises": result['exercises']})
+
+    except Exception as e:
+        print(f"End Session Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/init', methods=['GET'])
 def init():
@@ -206,6 +238,86 @@ def chat_stream():
     except Exception as e:
         print(f"Streaming Error: {e}")
         return jsonify({"error": str(e)}), 500
+
+def get_reply_from_agent(user_id, message, transcript, notes):
+    research_node, therapist_node, _ = get_agent_nodes()
+    
+    # 1. ROBUST TRANSCRIPT PARSING
+    history = []
+    for m in transcript:
+        # The Assistant UI often sends content as a list: [{"type": "text", "text": "..."}]
+        raw_content = m.get('content', "")
+        
+        if isinstance(raw_content, list):
+            # Extract and join all text parts
+            text = " ".join([part.get('text', '') for part in raw_content if part.get('type') == 'text'])
+        else:
+            text = str(raw_content)
+
+        # Clean up the text
+        text = text.strip()
+
+        # Skip if this is the message we are currently processing to avoid duplication
+        if text == message or not text:
+            continue
+            
+        if m.get('role') == 'user':
+            history.append(HumanMessage(content=text))
+        else:
+            history.append(AIMessage(content=text))
+    
+    # 2. SESSION INITIALIZATION
+    # If history is empty, this is the first turn
+    if not history:
+        initial_state = {
+            "user_id": user_id,
+            "user_notes": notes,
+            "transcript": [],
+            "evidence": []
+        }
+        res = research_node(initial_state)
+        agenda = res.get('agenda', "Provide empathetic support.")
+        evidence = res.get('evidence', [])
+    else:
+        agenda = "Continue the existing therapy session."
+        evidence = []
+
+    # 3. GET RESPONSE
+    state = {
+        "user_id": user_id,
+        "transcript": history + [HumanMessage(content=message)],
+        "agenda": agenda,
+        "evidence": evidence,
+        "session_id": "active_session"
+    }
+    
+    result = therapist_node(state)
+    return result['transcript'][-1].content
+
+# --- THE ROUTE ---
+@app.route('/chat', methods=['POST'])
+def handle_chat():
+    try:
+        data = request.json
+        # Use our refined helper
+        reply = get_reply_from_agent(
+            data.get('user_id'), 
+            data.get('message'), 
+            data.get('transcript', []), 
+            data.get('notes', "")
+        )
+        return jsonify({"reply": reply})
+    except Exception as e:
+        print(f"CRITICAL ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/therapy/end', methods=['POST'])
+def handle_end():
+    # Reuse your existing end_session logic but ensure the route name matches
+    return end_session()
+
+
 
 if __name__ == '__main__':
     db.init_db() # Ensure collection is created on startup

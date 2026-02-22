@@ -128,53 +128,54 @@ def therapist_node(state: TherapySessionState):
 
 def wrap_up_node(state: TherapySessionState):
     agenda = state.get('agenda', "General emotional support.")
+    
+    # Get clean history text
+    history_lines = []
+    for m in state['transcript']:
+        role = "User" if isinstance(m, HumanMessage) else "Therapist"
+        content = ensure_text(m.content)
+        history_lines.append(f"{role}: {content}")
+    history = "\n".join(history_lines)
 
-    # REFINED: Combining agenda-awareness with strict formatting
+    # --- PART 1: Generate the Summary (The "Memory" part for Dashboard) ---
+    summary_prompt = f"""
+    You are a clinical scribe. Based on the following session history, 
+    write a concise 1-2 sentence summary for the user's dashboard recap.
+    Focus on what was discussed and the user's current emotional state.
+    
+    SESSION GOALS: {agenda}
+    SESSION HISTORY: {history}
+    
+    Write ONLY the summary text. No preamble.
+    """
+
+    try:
+        summary_res = llm.invoke([
+            SystemMessage(content="You write concise, compassionate clinical summaries."),
+            HumanMessage(content=summary_prompt)
+        ])
+        summary_text = ensure_text(summary_res.content).strip()
+    except Exception as e:
+        print(f"Summary Generation Error: {e}")
+        summary_text = f"The user worked on their goals regarding: {agenda}"
+
+    # --- PART 2: Generate the Exercises (The "UI" part) ---
     exercise_prompt = f"""
-    Generate exactly 3 tailored mental health exercises based on the session history.
-    
-    ORIGINAL SESSION GOALS:
-    {agenda}
-
-    Check the transcript: if a goal was missed, make an exercise for it. 
-    If a goal was met, provide an advanced "next step."
-
-    Each exercise must be one of two types: "asynchronous" (static text) or "interactive" (guided session).
-    
-    CRITICAL FORMATTING FOR INTERACTIVE EXERCISES:
-    - Use the [BREAK] token between sentences where the AI should pause for the user.
-    - Example: "Close your eyes. [BREAK] Now, take a deep breath. [BREAK]"
+    Generate exactly 3 tailored mental health exercises (interactive or asynchronous) 
+    based on this session: {history}
 
     Return ONLY a JSON list:
     [{{"type": "interactive"|"asynchronous", "title": "...", "content": "..."}}]
     """
 
-    summary_prompt = f"""
-    Summarize key personal details and emotional state in 2 concise sentences for long-term memory.
-    Briefly acknowledge if these session goals were addressed: {agenda}
-    """
-
-    history = "\n".join([f"{'User' if isinstance(m, HumanMessage) else 'Therapist'}: {m.content}" for m in state['transcript']])
-
-    # --- PART 1: Generate the Summary (The "Memory" part) ---
-    try:
-        summary_res = llm.invoke([
-            SystemMessage(content=summary_prompt), 
-            HumanMessage(content=history)
-        ])
-        summary_text = ensure_text(summary_res.content)
-    except Exception as e:
-        print(f"Summary Error: {e}")
-        summary_text = "Session summary unavailable."
-
-    # --- PART 2: Generate the Exercises (The "UI" part) ---
     try:
         response = llm.invoke([
-            SystemMessage(content=exercise_prompt),
-            HumanMessage(content=f"Session history:\n{history}")
+            SystemMessage(content="You are an expert at creating mental health tools in JSON format."),
+            HumanMessage(content=exercise_prompt)
         ])
         content = ensure_text(response.content)
 
+        # Clean JSON markdown if the LLM included it
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
@@ -184,12 +185,18 @@ def wrap_up_node(state: TherapySessionState):
         if isinstance(exercises, dict):
             exercises = [exercises]
     except Exception as e:
-        print(f"Wrap Up Error: {e}")
-        exercises = []
+        print(f"Exercise Generation Error: {e}")
+        # Fallback exercises so the UI doesn't look empty
+        exercises = [
+            {"type": "asynchronous", "title": "Reflection", "content": "Take a moment to reflect on today's session goals."},
+            {"type": "interactive", "title": "Breathwork", "content": "Let's take a deep breath together. [BREAK] and exhale. [BREAK]"}
+        ]
 
-    # --- PART 3: Return BOTH ---
-    # We return the summary so bridge.py can catch it and save it to Actian
-    return {"exercises": exercises, "summary": summary_text}
+    # --- PART 3: Return BOTH keys for bridge.py ---
+    return {
+        "exercises": exercises, 
+        "summary": summary_text # This MUST be a clean string
+    }
 
 def therapist_stream_node(state: TherapySessionState):
     user_id = state.get('user_id')
