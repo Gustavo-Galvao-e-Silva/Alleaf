@@ -1,47 +1,25 @@
 import pickle
 import pandas as pd
-from typing import Any
-
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report
 
-INPUT_FILE_PATH = "../data/output/data.csv"
-OUTPUT_FILE_NAME = "model.pkl"
-
+INPUT_FILE = "../data/output/data.csv"
+MODEL_FILE = "model.pkl"
 TEST_IDS = ["S15", "S16", "S17"]
 
-TARGET_COLUMN = "stress"
-ID_COLUMN = "subject_id"
 
+def train():
+    df = pd.read_csv(INPUT_FILE).dropna()
 
-def build_clean_df(file_path: str) -> pd.DataFrame:
-    df = pd.read_csv(file_path)
-    df = df.dropna()
-    return df
+    train_df = df[~df["subject_id"].isin(TEST_IDS)]
+    test_df = df[df["subject_id"].isin(TEST_IDS)]
 
-
-def build_test_train_dfs(
-    df: pd.DataFrame,
-    subject_ids: list[str],
-    id_col: str,
-    target_col: str,
-):
-
-    train_df = df[~df[id_col].isin(subject_ids)]
-    test_df = df[df[id_col].isin(subject_ids)]
-
-    X_train = train_df.drop(columns=[id_col, target_col])
-    y_train = train_df[target_col]
-
-    X_test = test_df.drop(columns=[id_col, target_col])
-    y_test = test_df[target_col]
-
-    return X_train, X_test, y_train, y_test
-
-
-def train_model(X_train: pd.DataFrame, y_train: pd.Series):
+    X_train = train_df.drop(columns=["subject_id", "stress"])
+    y_train = train_df["stress"]
+    X_test = test_df.drop(columns=["subject_id", "stress"])
+    y_test = test_df["stress"]
 
     pipeline = Pipeline(
         [
@@ -49,11 +27,7 @@ def train_model(X_train: pd.DataFrame, y_train: pd.Series):
             (
                 "model",
                 LogisticRegression(
-                    penalty="l2",
-                    C=1.0,
-                    class_weight="balanced",
-                    max_iter=1000,
-                    random_state=42,
+                    class_weight="balanced", random_state=42, max_iter=1000
                 ),
             ),
         ]
@@ -61,38 +35,11 @@ def train_model(X_train: pd.DataFrame, y_train: pd.Series):
 
     pipeline.fit(X_train, y_train)
 
-    return pipeline
+    print(classification_report(y_test, pipeline.predict(X_test)))
+
+    with open(MODEL_FILE, "wb") as f:
+        pickle.dump({"model": pipeline, "features": X_train.columns.tolist()}, f)
 
 
 if __name__ == "__main__":
-
-    df = build_clean_df(INPUT_FILE_PATH)
-
-    X_train, X_test, y_train, y_test = build_test_train_dfs(
-        df, TEST_IDS, ID_COLUMN, TARGET_COLUMN
-    )
-
-    model = train_model(X_train, y_train)
-
-    y_pred = model.predict(X_test)
-
-    print("Accuracy:", accuracy_score(y_test, y_pred))
-    print("\nClassification Report:")
-    print(classification_report(y_test, y_pred))
-
-    # Print coefficients for interpretability
-    logistic = model.named_steps["model"]
-    feature_names = X_train.columns
-
-    print("\nFeature Coefficients:")
-    for feature, coef in zip(feature_names, logistic.coef_[0]):
-        print(f"{feature}: {coef:.4f}")
-
-    with open(OUTPUT_FILE_NAME, "wb") as f:
-        payload = {
-            "model": model,
-            "features": feature_names.to_list(),
-        }
-        pickle.dump(payload, f)
-
-    print("\nModel saved to", OUTPUT_FILE_NAME)
+    train()
