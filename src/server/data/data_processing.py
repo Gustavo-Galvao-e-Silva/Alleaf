@@ -7,10 +7,11 @@ import neurokit2 as nk
 # Configuration
 # -----------------------------
 FS = 700
-WINDOW_SECONDS = 60
+WINDOW_SECONDS = 45
 WINDOW_SIZE = FS * WINDOW_SECONDS
-INPUT_PATH = f"../data/input"
-OUTPUT_PATH = f"../data/output"
+INPUT_PATH = "../data/input"
+OUTPUT_PATH = "../data/output"
+
 DEMOGRAPHICS = {
     "S2": {"age": 27, "height": 175, "weight": 80, "gender": "M", "smoker": "N"},
     "S3": {"age": 27, "height": 173, "weight": 69, "gender": "M", "smoker": "N"},
@@ -30,9 +31,6 @@ DEMOGRAPHICS = {
 }
 
 
-# -----------------------------
-# I/O
-# -----------------------------
 def load_participant(path_to_pkl):
     with open(path_to_pkl, "rb") as f:
         return pickle.load(f, encoding="latin1")
@@ -47,17 +45,15 @@ def extract_signals(data):
 def extract_demographics(data):
     height_m = data["height"] / 100
     bmi = data["weight"] / (height_m**2)
+
     return {
         "age": data["age"],
-        "gender": data["gender"],
+        "male": 1 if data["gender"] == "M" else 0,
         "bmi": bmi,
-        "smoker": data["smoker"],
+        "smoker": 1 if data["smoker"] == "Y" else 0,
     }
 
 
-# -----------------------------
-# Labelling
-# -----------------------------
 def get_majority_label(label_window):
     unique, counts = np.unique(label_window, return_counts=True)
     return unique[np.argmax(counts)]
@@ -69,15 +65,16 @@ def to_binary_label(majority_label, keep=(1, 2)):
     return 1 if majority_label == 2 else 0
 
 
-# -----------------------------
-# HRV Feature Extraction
-# -----------------------------
 def extract_hrv_features(ecg_window, fs=FS):
     signals, info = nk.ecg_process(ecg_window, sampling_rate=fs)
+
     mean_hr = signals["ECG_Rate"].mean()
+    hr_std = signals["ECG_Rate"].std()
+    hr_min = signals["ECG_Rate"].min()
+    hr_max = signals["ECG_Rate"].max()
 
     rpeaks = info["ECG_R_Peaks"]
-    rr_intervals = np.diff(rpeaks) / fs * 1000  # ms
+    rr_intervals = np.diff(rpeaks) / fs * 1000
 
     if len(rr_intervals) < 2:
         return None
@@ -85,16 +82,20 @@ def extract_hrv_features(ecg_window, fs=FS):
     rmssd = np.sqrt(np.mean(np.diff(rr_intervals) ** 2))
     sdnn = np.std(rr_intervals)
 
+    nn50 = np.sum(np.abs(np.diff(rr_intervals)) > 50)
+    pnn50 = nn50 / len(rr_intervals)
+
     return {
         "mean_hr": mean_hr,
-        "rmssd_60s": rmssd,
-        "sdnn_60s": sdnn,
+        "hr_std": hr_std,
+        "hr_min": hr_min,
+        "hr_max": hr_max,
+        "rmssd": rmssd,
+        "sdnn": sdnn,
+        "pnn50": pnn50,
     }
 
 
-# -----------------------------
-# Windowing
-# -----------------------------
 def generate_windows(ecg, labels, window_size=WINDOW_SIZE):
     n_samples = len(ecg)
     for start in range(0, n_samples - window_size, window_size):
@@ -105,6 +106,7 @@ def generate_windows(ecg, labels, window_size=WINDOW_SIZE):
 def process_window(ecg_window, label_window):
     majority_label = get_majority_label(label_window)
     binary_label = to_binary_label(majority_label)
+
     if binary_label is None:
         return None
 
@@ -119,29 +121,47 @@ def process_window(ecg_window, label_window):
     return {**features, "stress": binary_label}
 
 
-# -----------------------------
-# Main pipeline
-# -----------------------------
 def create_windows_df(path_to_pkl, subject_id):
     data = load_participant(f"{path_to_pkl}/{subject_id}/{subject_id}.pkl")
     ecg, labels = extract_signals(data)
-    demographics = extract_demographics(DEMOGRAPHICS[subject_id])
 
+    demographics = extract_demographics(DEMOGRAPHICS[subject_id])
     rows = []
+
     for ecg_window, label_window in generate_windows(ecg, labels):
         row = process_window(ecg_window, label_window)
         if row is not None:
-            rows.append({**row, **demographics})
+            row["subject_id"] = subject_id
+            rows.append(row)
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return df
+
+    baseline_df = df[df["stress"] == 0]
+
+    baseline_hr = baseline_df["mean_hr"].mean()
+    baseline_rmssd = baseline_df["rmssd"].mean()
+
+    df["hr_delta"] = df["mean_hr"] - baseline_hr
+    df["rmssd_delta"] = df["rmssd"] - baseline_rmssd
+
+    for key, value in demographics.items():
+        df[key] = value
+
+    df["hr_delta_x_age"] = df["hr_delta"] * df["age"]
+    df["rmssd_delta_x_gender"] = df["rmssd_delta"] * df["male"]
+
+    return df
 
 
-# -----------------------------
-# Example usage
-# -----------------------------
 if __name__ == "__main__":
     df_list = [
         create_windows_df(INPUT_PATH, subject_id) for subject_id in DEMOGRAPHICS.keys()
     ]
-    df = pd.concat(df_list)
-    df.to_csv(f"{OUTPUT_PATH}/data.csv")
+
+    df = pd.concat(df_list, ignore_index=True)
+    df.to_csv(f"{OUTPUT_PATH}/data.csv", index=False)
+
+    print("Processing complete. Saved to data/output/data.csv")

@@ -1,0 +1,238 @@
+/* ── Background ── */
+.bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.bg::before {
+  content: "";
+  position: absolute;
+  top: -20px;
+  left: -20px;
+  right: -20px;
+  bottom: -20px;
+  background: url("/photo/01cd11e3e465d21ade52ec4e7ead0c72.jpg") center / cover no-repeat;
+  filter: blur(6px);
+}
+
+.bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.6) 100%),
+    rgba(255,255,255,0.08);
+}
+
+/* ── Page Shell ── */
+.page {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+
+/* ── Card ── */
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  padding: 36px 32px;
+}
+
+.title {
+  font-family: var(--font-sans);
+  font-size: 26px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.88);
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: rgba(0, 0, 0, 0.5);
+  margin: 0 0 28px;
+}
+
+/* ── Form ── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.input {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  outline: none;
+  width: 100%;
+  appearance: none;
+  transition: border-color 150ms ease;
+}
+
+.input:focus {
+  border-color: #4A8B7A;
+}
+
+.error {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: #dc2626;
+  margin: 0;
+}
+
+/* ── Date Picker ── */
+.datePickerTrigger {
+  width: 100%;
+  justify-content: flex-start;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  gap: 8px;
+  height: auto;
+}
+
+.datePickerTrigger:hover {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: #4A8B7A;
+}
+
+.datePickerEmpty {
+  color: rgba(0, 0, 0, 0.35);
+}
+
+.datePickerIcon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.datePickerPopover {
+  background: white;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+  padding: 0;
+  z-index: 50;
+}
+
+.submitBtn {
+  padding: 13px;
+  border: none;
+  border-radius: 12px;
+  background: #4A8B7A;
+  color: white;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 200ms ease, transform 150ms ease;
+}
+
+.submitBtn:hover {
+  opacity: 0.9;
+}
+
+.submitBtn:active {
+  transform: scale(0.98);
+}
+
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Y/N Toggle ── */
+.toggleGroup {
+  display: flex;
+  gap: 10px;
+}
+
+.toggleBtn {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.04);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.toggleActive {
+  background: #4A8B7A;
+  border-color: #4A8B7A;
+  color: white;
+}
+
+/* ── Slider ── */
+.slider {
+  width: 100%;
+  accent-color: #4A8B7A;
+  cursor: pointer;
+  height: 4px;
+}
+
+.sliderValue {
+  font-weight: 600;
+  color: #4A8B7A;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+}
+
+.sliderTicks {
+  position: relative;
+  width: 100%;
+  height: 16px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.35);
+  margin-top: 2px;
+}
+
+.sliderTicks span {
+  position: absolute;
+  transform: translateX(-50%);
+}

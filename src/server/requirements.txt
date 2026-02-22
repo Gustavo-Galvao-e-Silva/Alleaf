@@ -6,3 +6,7 @@ pydantic
 requests
 sentence-transformers
 ./docker/actiancortex-0.1.0b1-py3-none-any.whl
+pandas
+numpy
+neurokit2
+xgboost
