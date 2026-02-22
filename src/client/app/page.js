@@ -41,20 +41,41 @@ import {
   writeActiveAppointmentSession,
 } from "@/app/lib/appointments";
 
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/firebase";
+import { useBleHeartRate } from "./hooks/useBleHeartRate";
 import exerciseData from "./testData/exercises.json";
 
 const ACCENT_CYCLE = ["teal", "blue", "purple", "rose"];
 
 const ICON_BY_TYPE = {
   interactive: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />
     </svg>
   ),
   asynchronous: (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 2a7 7 0 017 7c0 3-1.5 5-3 6.5V18H8v-2.5C6.5 14 5 12 5 9a7 7 0 017-7z" />
       <path d="M9 22h6" />
       <path d="M10 18v4" />
@@ -437,6 +458,7 @@ function buildScheduledDateFromSelection(selection) {
 export default function Home() {
   const router = useRouter();
   const { isLoaded, isSignedIn, userId } = useAuth();
+  const { user } = useUser();
 
   const [sessionMemory, setSessionMemory] = useState(null);
   const [displayExercises, setDisplayExercises] = useState(EXERCISES); // Start with templates
@@ -488,6 +510,40 @@ useEffect(() => {
     }
   }, [isLoaded, isSignedIn, router]);
 
+  // ── User profile from Firestore (for heart-data payloads) ────────────────
+  const [userProfile, setUserProfile] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", user.id));
+        if (snap.exists()) {
+          const d = snap.data();
+          setUserProfile({
+            userId: user.id,
+            age: d.age ?? null,
+            sex: d.sex ?? null,
+            height: d.height ?? null,
+            weight: d.weight ?? null,
+            smoker: d.smoker ?? null,
+            baselineRR: d.baselineRR ?? null,
+          });
+        }
+      } catch (err) {
+        console.error("[Home] Failed to load user profile:", err);
+      }
+    })();
+  }, [user?.id]);
+
+  // ── BLE heart-rate sensor ────────────────────────────────────────────────
+  const {
+    bleStatus,
+    sensorState,
+    connect: connectWearable,
+    meanHr,
+    isStressed,
+  } = useBleHeartRate(userProfile);
   const [dailyQuote, setDailyQuote] = useState({ q: "", a: "" });
 
   useEffect(() => {
@@ -662,6 +718,31 @@ const handleStartSession = (appointmentId) => {
           </span>
           <h1 className={styles.greeting}>Hello, there</h1>
           <p className={styles.subtitle}>Welcome back to your wellness space</p>
+
+          {/* Wearable status chip */}
+          <div className={styles.wearableChip}>
+            {bleStatus !== "connected" ? (
+              <button
+                type="button"
+                className={styles.wearableConnectBtn}
+                onClick={connectWearable}
+                disabled={bleStatus === "connecting"}
+              >
+                {bleStatus === "connecting"
+                  ? "Connecting…"
+                  : "Connect Wearable"}
+              </button>
+            ) : (
+              <span className={styles.wearableStatus}>
+                ●{" "}
+                {sensorState === "TRACKING"
+                  ? "Monitoring heart rate"
+                  : sensorState === "DETECTING"
+                    ? "Detecting pulse…"
+                    : "Wearable connected"}
+              </span>
+            )}
+          </div>
         </section>
 
         {/* Daily Quote */}
@@ -733,42 +814,41 @@ const handleStartSession = (appointmentId) => {
                           Edit session
                         </button>
                       </div>
-                    </div>
 
-                    <p className={styles.appointmentMeta}>
-                      {formatAppointmentDateTime(
-                        appointment.scheduledAt,
-                        appointment.timezone,
-                      )}
-                    </p>
-                    <p className={styles.appointmentRepeat}>
-                      {appointment.repeat
-                        ? `Repeats ${appointment.repeat}`
-                        : "One-time session"}
-                    </p>
+                      <p className={styles.appointmentMeta}>
+                        {formatAppointmentDateTime(
+                          appointment.scheduledAt,
+                          appointment.timezone,
+                        )}
+                      </p>
+                      <p className={styles.appointmentRepeat}>
+                        {appointment.repeat
+                          ? `Repeats ${appointment.repeat}`
+                          : "One-time session"}
+                      </p>
 
-                    <div className={styles.appointmentActions}>
-                      {isToday && (
+                      <div className={styles.appointmentActions}>
+                        {isToday && (
+                          <button
+                            type="button"
+                            className={styles.startSessionButton}
+                            onClick={() => handleStartSession(appointment.id)}
+                          >
+                            Start Session
+                          </button>
+                        )}
                         <button
                           type="button"
-                          className={styles.startSessionButton}
-                          onClick={() => handleStartSession(appointment.id)}
+                          className={styles.cancelSessionButton}
+                          onClick={() => handleCancelSession(appointment.id)}
                         >
-                          Start Session
+                          Cancel Session
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className={styles.cancelSessionButton}
-                        onClick={() => handleCancelSession(appointment.id)}
-                      >
-                        Cancel Session
-                      </button>
-                    </div>
-                  </article>
-                );
-              })
-            )}
+                      </div>
+                    </article>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -945,7 +1025,9 @@ const handleStartSession = (appointmentId) => {
                   <div className={styles.exerciseInfo}>
                     <p className={styles.exerciseName}>
                       {ex.name}
-                      <span className={styles.exerciseTypeBadge}>{typeLabel}</span>
+                      <span className={styles.exerciseTypeBadge}>
+                        {typeLabel}
+                      </span>
                     </p>
                     <p className={styles.exerciseDuration}>{ex.duration}</p>
                   </div>

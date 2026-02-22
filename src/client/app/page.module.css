@@ -70,6 +70,53 @@
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
 }
 
+/* ── Wearable chip ── */
+.wearableChip {
+  margin-top: var(--space-4);
+}
+
+.wearableConnectBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.wearableConnectBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.wearableConnectBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wearableStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.2);
+  border: 1.5px solid rgba(52, 211, 153, 0.5);
+  color: #6ee7b7;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+}
+
 /* ── Quote Card ── */
 .quoteSection {
   padding: var(--space-6) var(--space-6) var(--space-7);
