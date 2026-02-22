@@ -239,7 +239,7 @@ def chat_stream():
         print(f"Streaming Error: {e}")
         return jsonify({"error": str(e)}), 500
 
-def get_reply_from_agent(user_id, message, transcript, notes):
+def get_reply_from_agent(user_id, message, transcript, notes, agenda_from_front=""):
     research_node, therapist_node, _ = get_agent_nodes()
     
     # 1. ROBUST TRANSCRIPT PARSING
@@ -266,15 +266,10 @@ def get_reply_from_agent(user_id, message, transcript, notes):
         else:
             history.append(AIMessage(content=text))
     
-    # 2. SESSION INITIALIZATION
-    # If history is empty, this is the first turn
-    if not history:
-        initial_state = {
-            "user_id": user_id,
-            "user_notes": notes,
-            "transcript": [],
-            "evidence": []
-        }
+    if agenda_from_front:
+        agenda = agenda_from_front
+    elif not history:
+        initial_state = { "user_id": user_id, "user_notes": notes, "transcript": [], "evidence": [] }
         res = research_node(initial_state)
         agenda = res.get('agenda', "Provide empathetic support.")
         evidence = res.get('evidence', [])
@@ -304,7 +299,8 @@ def handle_chat():
             data.get('user_id'), 
             data.get('message'), 
             data.get('transcript', []), 
-            data.get('notes', "")
+            data.get('notes', ""),
+            data.get('agenda', "")
         )
         return jsonify({"reply": reply})
     except Exception as e:

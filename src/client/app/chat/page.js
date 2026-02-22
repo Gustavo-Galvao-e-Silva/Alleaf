@@ -508,19 +508,72 @@ function MessageSync({ onUpdate }) {
 }
 
 export default function ChatPage() {
+  const [sessionAgenda, setSessionAgenda] = useState("");
+  const didInitRef = useRef(false); // Prevents the AI from greeting you twice
   const messagesRef = useRef([]); // This will hold our real transcript
 
   const [hasMounted, setHasMounted] = useState(false);
-
-useEffect(() => {
-    setHasMounted(true); // Set to true once the browser loads
-  }, []);
 
   const { userId } = useAuth(); // Get the real Clerk ID
   const router = useRouter();
   const searchParams = useSearchParams();
   const userNotes = searchParams.get("notes") || "";
   const requestedAppointmentId = searchParams.get("appointment");
+
+const runtime = useChatRuntime({
+    transport: new AssistantChatTransport({
+      api: "/api/chat",
+      body: {
+        userId: userId,
+        userNotes: userNotes,
+        agenda: sessionAgenda // <--- ADD THIS LINE
+      },
+    }),
+  });
+
+  useEffect(() => { setHasMounted(true); }, []);
+
+
+  useEffect(() => {
+    const initializeClinicalSession = async () => {
+      // Guard: Only run if we have a user, it's mounted, and we haven't already started
+      if (!hasMounted || !userId || didInitRef.current) return;
+      didInitRef.current = true;
+
+      try {
+        const res = await fetch('http://localhost:5001/agent/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, user_notes: userNotes })
+        });
+        
+        const data = await res.json();
+
+        // 1. Store the clinical agenda for the therapist to follow
+        if (data.agenda) setSessionAgenda(data.agenda);
+
+        // 2. Force the "Assistant" greeting into the UI thread
+        if (data.food_for_thought) {
+          runtime.append({
+            role: "assistant",
+            content: [{ type: "text", text: data.food_for_thought }]
+          });
+        }
+      } catch (e) {
+        console.error("Clinical Init Failed:", e);
+      }
+    };
+
+    initializeClinicalSession();
+  }, [hasMounted, userId, userNotes, runtime]);
+
+
+
+
+useEffect(() => {
+    setHasMounted(true); // Set to true once the browser loads
+  }, []);
+
   const [sessionRevision, setSessionRevision] = useState(0);
   const [isVoiceOpen, setIsVoiceOpen] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -598,15 +651,6 @@ useEffect(() => {
     }
   }, [appointmentSessionState]);
 
-const runtime = useChatRuntime({
-  transport: new AssistantChatTransport({
-    api: "/api/chat",
-    body: {
-      userId: userId,     // Pass ID for Vector DB lookup
-      userNotes: userNotes // Pass notes for the Research Node
-    },
-  }),
-});
 
   const handleOrbClick = () => {
     setVoiceInputError("");

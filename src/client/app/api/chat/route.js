@@ -6,20 +6,21 @@ export const runtime = "nodejs";
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { messages, userId, userNotes } = body;
+    // 1. Add 'agenda' to the destructured body
+    const { messages, userId, userNotes, agenda } = body; 
 
-    // Safety: Get latest message or default to greeting
     const userText = messages?.[messages.length - 1]?.content || "Hello";
 
-    // 1. Call your updated Python Bridge
     const bridgeRes = await fetch('http://localhost:5001/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        user_id: userId, 
+      body: JSON.stringify({
+        user_id: userId,
         message: userText,
-        notes: userNotes || "", // Ensure this is never undefined
-        transcript: messages 
+        notes: userNotes || "",
+        transcript: messages,
+        // 2. Pass the agenda to the Python Bridge
+        agenda: agenda || "" 
       })
     });
 
