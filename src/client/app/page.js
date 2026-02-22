@@ -1,6 +1,42 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { format, startOfToday } from "date-fns";
+import dayjs from "dayjs";
+import { CalendarIcon } from "lucide-react";
+import { TimePicker } from "antd";
 import styles from "./page.module.css";
 import TypedName from "./components/TypedName";
 import BottomNav from "./components/BottomNav";
+import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  buildAppointmentTitle,
+  buildContextItemsFromAppointment,
+  cancelAppointment,
+  clearActiveAppointmentSession,
+  createAppointment,
+  formatAppointmentDateTime,
+  isFutureDateTime,
+  markAppointmentSessionStarted,
+  readActiveAppointmentSession,
+  readAppointments,
+  writeActiveAppointmentSession,
+} from "@/app/lib/appointments";
 
 const EXERCISES = [
   {
@@ -50,6 +86,8 @@ const EXERCISES = [
   },
 ];
 
+const REPEAT_OPTIONS = ["weekly", "monthly"];
+
 function SparkleIcon() {
   return (
     <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
@@ -63,16 +101,146 @@ function SparkleIcon() {
   );
 }
 
-function QuoteIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" fill="currentColor" opacity="0.7">
-      <rect x="6" y="6" width="4" height="16" rx="2" />
-      <rect x="16" y="6" width="4" height="16" rx="2" />
-    </svg>
-  );
+function toLocalDateTimeInputValue(date) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function toLocalDateInputValue(date) {
+  return toLocalDateTimeInputValue(date).slice(0, 10);
+}
+
+function dateStringToDate(dateString) {
+  if (!dateString) return null;
+  const [year, month, day] = dateString.split("-").map((value) => Number(value));
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getDefaultScheduleSelection() {
+  const nextHour = new Date();
+  nextHour.setMinutes(0, 0, 0);
+  nextHour.setHours(nextHour.getHours() + 1);
+
+  return {
+    date: toLocalDateInputValue(nextHour),
+    time: toLocalDateTimeInputValue(nextHour).slice(11, 16),
+    repeat: null,
+  };
+}
+
+function buildScheduledDateFromSelection(selection) {
+  if (!selection?.date) return null;
+
+  const [year, month, day] = selection.date
+    .split("-")
+    .map((value) => Number(value));
+
+  if (!year || !month || !day) return null;
+
+  const [hourText, minuteText] = (selection.time || "").split(":");
+  const hour24 = Number(hourText);
+  const minute = Number(minuteText);
+  if (
+    Number.isNaN(hour24) ||
+    Number.isNaN(minute) ||
+    hour24 < 0 ||
+    hour24 > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+
+  const scheduledDate = new Date(year, month - 1, day, hour24, minute, 0, 0);
+  return Number.isNaN(scheduledDate.getTime()) ? null : scheduledDate;
 }
 
 export default function Home() {
+  const router = useRouter();
+  const [appointments, setAppointments] = useState(() => readAppointments());
+  const [scheduleSelection, setScheduleSelection] = useState(() =>
+    getDefaultScheduleSelection(),
+  );
+  const [therapistNotes, setTherapistNotes] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const selectedScheduleDate = dateStringToDate(scheduleSelection.date);
+  const selectedScheduleTime = useMemo(() => {
+    if (!scheduleSelection.time) return null;
+    const parsed = dayjs(`2000-01-01T${scheduleSelection.time}`);
+    return parsed.isValid() ? parsed : null;
+  }, [scheduleSelection.time]);
+
+  const scheduledAppointments = useMemo(() => {
+    return [...appointments].sort((first, second) => {
+      return new Date(first.scheduledAt).getTime() - new Date(second.scheduledAt).getTime();
+    }).filter((appointment) => appointment.status === "scheduled");
+  }, [appointments]);
+
+  const resetScheduleFields = () => {
+    setScheduleSelection(getDefaultScheduleSelection());
+    setTherapistNotes("");
+    setFormError("");
+  };
+
+  const handleCreateAppointment = (event) => {
+    event.preventDefault();
+    setFormError("");
+
+    if (!scheduleSelection.date) {
+      setFormError("Please choose a date and time.");
+      return;
+    }
+
+    const scheduledDate = buildScheduledDateFromSelection(scheduleSelection);
+    if (!scheduledDate) {
+      setFormError("Please choose a valid date and time.");
+      return;
+    }
+
+    if (!isFutureDateTime(scheduledDate.toISOString())) {
+      setFormError("Appointments must be scheduled in the future.");
+      return;
+    }
+
+    createAppointment({
+      scheduledAt: scheduledDate.toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      therapistNotes,
+      repeat: scheduleSelection.repeat,
+    });
+
+    setAppointments(readAppointments());
+    resetScheduleFields();
+    setIsScheduleDialogOpen(false);
+  };
+
+  const handleStartSession = (appointmentId) => {
+    const startedAppointment = markAppointmentSessionStarted(appointmentId);
+    if (!startedAppointment || startedAppointment.status !== "scheduled") return;
+
+    const activeSession = {
+      appointmentId: startedAppointment.id,
+      startedAt: startedAppointment.startedAt || new Date().toISOString(),
+      contextItems: buildContextItemsFromAppointment(startedAppointment),
+    };
+
+    writeActiveAppointmentSession(activeSession);
+    setAppointments(readAppointments());
+    router.push(`/chat?appointment=${encodeURIComponent(startedAppointment.id)}`);
+  };
+
+  const handleCancelSession = (appointmentId) => {
+    const activeSession = readActiveAppointmentSession();
+    cancelAppointment(appointmentId);
+    if (activeSession?.appointmentId === appointmentId) {
+      clearActiveAppointmentSession();
+    }
+    setAppointments(readAppointments());
+  };
+
   return (
     <>
       <div className={styles.videoBg} aria-hidden="true" />
@@ -94,6 +262,211 @@ export default function Home() {
           </p>
           <p className={styles.quoteAttribution}>— Unknown</p>
         </div>
+      </section>
+
+        {/* Schedule Section */}
+      <section className={styles.scheduleSection}>
+        <div className={styles.scheduleHeader}>
+          <h2 className={styles.sectionTitle}>Schedule</h2>
+          <button
+            type="button"
+            className={styles.openScheduleButton}
+            onClick={() => {
+              resetScheduleFields();
+              setIsScheduleDialogOpen(true);
+            }}
+          >
+            Schedule Meeting
+          </button>
+        </div>
+
+        <div className={styles.appointmentList}>
+          {scheduledAppointments.length === 0 ? (
+            <p className={styles.emptySchedule}>No scheduled meetings yet.</p>
+          ) : (
+            scheduledAppointments.map((appointment) => {
+              const scheduledDate = new Date(appointment.scheduledAt);
+              const today = new Date();
+              const isToday =
+                scheduledDate.getFullYear() === today.getFullYear() &&
+                scheduledDate.getMonth() === today.getMonth() &&
+                scheduledDate.getDate() === today.getDate();
+
+              return (
+                <article key={appointment.id} className={styles.appointmentCard}>
+                  <div className={styles.appointmentHeader}>
+                    <p className={styles.appointmentTitle}>
+                      {buildAppointmentTitle(appointment)}
+                    </p>
+                    <span className={styles.statusBadge} data-status="scheduled">
+                      scheduled
+                    </span>
+                  </div>
+
+                  <p className={styles.appointmentMeta}>
+                    {formatAppointmentDateTime(
+                      appointment.scheduledAt,
+                      appointment.timezone,
+                    )}
+                  </p>
+                  <p className={styles.appointmentRepeat}>
+                    {appointment.repeat
+                      ? `Repeats ${appointment.repeat}`
+                      : "One-time session"}
+                  </p>
+
+                  {appointment.therapistNotes ? (
+                    <p className={styles.appointmentNotes}>{appointment.therapistNotes}</p>
+                  ) : (
+                    <p className={styles.appointmentNotesPlaceholder}>
+                      No therapist notes added.
+                    </p>
+                  )}
+
+                  <div className={styles.appointmentActions}>
+                    {isToday && (
+                      <button
+                        type="button"
+                        className={styles.startSessionButton}
+                        onClick={() => handleStartSession(appointment.id)}
+                      >
+                        Start Session
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.cancelSessionButton}
+                      onClick={() => handleCancelSession(appointment.id)}
+                    >
+                      Cancel Session
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+          )}
+        </div>
+
+        <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
+          <DialogContent className={styles.scheduleDialog}>
+            <DialogHeader>
+              <DialogTitle className={styles.scheduleDialogTitle}>
+                Schedule Meeting
+              </DialogTitle>
+            </DialogHeader>
+            <form className={styles.scheduleForm} onSubmit={handleCreateAppointment}>
+              <div className={styles.dropdownField}>
+                <p className={styles.formLabel}><span className={styles.formLabelText}>Date<span className={styles.requiredStar}>*</span></span></p>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(
+                        styles.datePickerTrigger,
+                        !scheduleSelection.date && styles.datePickerTriggerEmpty,
+                      )}
+                    >
+                      <CalendarIcon className={styles.datePickerTriggerIcon} />
+                      {selectedScheduleDate ? (
+                        format(selectedScheduleDate, "PPP")
+                      ) : (
+                        <span>Select date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className={styles.datePickerPopoverContent}
+                    align="start"
+                  >
+                    <Calendar
+                      mode="single"
+                      selected={selectedScheduleDate || undefined}
+                      onSelect={(value) =>
+                        setScheduleSelection((previous) => ({
+                          ...previous,
+                          date: value ? toLocalDateInputValue(value) : "",
+                        }))
+                      }
+                      disabled={{ before: startOfToday() }}
+                      captionLayout="dropdown"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className={styles.dropdownField}>
+                <p className={styles.formLabel}><span className={styles.formLabelText}>Time<span className={styles.requiredStar}>*</span></span></p>
+                <TimePicker
+                  value={selectedScheduleTime}
+                  format="HH:mm"
+                  minuteStep={5}
+                  allowClear={false}
+                  className={styles.timePicker}
+                  popupClassName={styles.timePickerDropdown}
+                  getPopupContainer={(trigger) => trigger.parentElement || trigger}
+                  onChange={(_, timeString) =>
+                    setScheduleSelection((previous) => ({
+                      ...previous,
+                      time: typeof timeString === "string" ? timeString : "",
+                    }))
+                  }
+                />
+              </div>
+
+              <div className={styles.repeatField}>
+                <p className={styles.formLabel}><span className={styles.formLabelText}>Repeat <span className={styles.optionalTag}>(optional)</span></span></p>
+                <div className={styles.repeatOptions}>
+                  {REPEAT_OPTIONS.map((repeatValue) => (
+                    <button
+                      key={repeatValue}
+                      type="button"
+                      className={styles.repeatOption}
+                      data-active={scheduleSelection.repeat === repeatValue}
+                      onClick={() =>
+                        setScheduleSelection((previous) => ({
+                          ...previous,
+                          repeat:
+                            previous.repeat === repeatValue
+                              ? null
+                              : repeatValue,
+                        }))
+                      }
+                    >
+                      {repeatValue}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className={styles.formLabel}>
+                <span className={styles.formLabelText}>Notes for therapist <span className={styles.optionalTag}>(optional)</span></span>
+                <textarea
+                  value={therapistNotes}
+                  onChange={(event) => setTherapistNotes(event.target.value)}
+                  className={styles.formTextarea}
+                  rows={3}
+                  placeholder="What should Samantha focus on in this session?"
+                />
+              </label>
+
+              {formError ? <p className={styles.formError}>{formError}</p> : null}
+
+              <div className={styles.dialogActions}>
+                <button
+                  type="button"
+                  className={styles.dialogCancelButton}
+                  onClick={() => setIsScheduleDialogOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className={styles.scheduleButton}>
+                  Schedule
+                </button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </section>
 
       {/* Wellness Exercises */}

@@ -282,6 +282,8 @@
 }
 
 .sleepLevelBadge {
+  position: relative;
+  left: -7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

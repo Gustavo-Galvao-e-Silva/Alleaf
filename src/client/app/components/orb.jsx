@@ -1,9 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useRef } from "react"
+import { Suspense, useEffect, useMemo, useRef } from "react"
 import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
+
+const PERLIN_TEXTURE_PATH = "/perlin-noise.png"
+useTexture.preload(PERLIN_TEXTURE_PATH)
 
 export function Orb({
   colors = ["#CADCFC", "#A0B9D1"],
@@ -68,9 +71,7 @@ function Scene({
   const targetColor1Ref = useRef(new THREE.Color(colors[0]))
   const targetColor2Ref = useRef(new THREE.Color(colors[1]))
   const animSpeedRef = useRef(0.1)
-  const perlinNoiseTexture = useTexture(
-    "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png"
-  )
+  const perlinNoiseTexture = useTexture(PERLIN_TEXTURE_PATH)
 
   const agentRef = useRef(agentState)
   const modeRef = useRef(volumeMode)

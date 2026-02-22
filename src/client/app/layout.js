@@ -16,6 +16,9 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preload" href="/perlin-noise.png" as="image" />
+      </head>
       <body>
         <TooltipProvider>{children}</TooltipProvider>
       </body>
