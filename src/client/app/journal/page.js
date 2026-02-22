@@ -3,13 +3,19 @@
 import { useState, useRef, useEffect } from "react";
 import styles from "./page.module.css";
 import BottomNav from "../components/BottomNav";
+import { useUser } from "@clerk/nextjs";
 
-const PROMPTS = [
-  "What are three things you're grateful for today?",
-  "Describe a challenge you faced recently and how you overcame it.",
-  "What does your ideal day look like?",
-  "Write about a person who inspires you and why.",
-  "What are your goals for the next month?",
+const promptList = [
+  "What is one small win you had today?",
+  "What is something you’re proud of accomplishing this week?",
+  "Describe a moment recently that made you smile.",
+  "What is a habit you’re building that’s improving your life?",
+  "Who supported you recently, and how did they help you?",
+  "What is something you’re excited about in the near future?",
+  "What is a challenge you handled better than before?",
+  "What does “success” look like for you right now?",
+  "What is something you’ve learned about yourself lately?",
+  "What is one way you showed kindness today?"
 ];
 
 function formatDateTime() {
@@ -25,6 +31,17 @@ function SparkleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2l1.5 6.5L20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2z" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 16H3v5" />
     </svg>
   );
 }
@@ -64,22 +81,31 @@ function NoteEditor({ title, body, onTitleChange, onBodyChange, titlePlaceholder
 }
 
 export default function JournalPage() {
+  // 1. Auth Hook
+  const { user, isLoaded, isSignedIn } = useUser();
+
+  // 2. Local State
   const [activeTab, setActiveTab] = useState(0);
   const [freeTitle, setFreeTitle] = useState("");
   const [freeBody, setFreeBody] = useState("");
   const [promptedTitle, setPromptedTitle] = useState("");
   const [promptedBody, setPromptedBody] = useState("");
-  const [currentPrompt] = useState(
-    PROMPTS[Math.floor(Math.random() * PROMPTS.length)]
+  const [currentPrompt, setCurrentPrompt] = useState(
+    promptList[Math.floor(Math.random() * promptList.length)]
   );
+
+  const refreshPrompt = () => {
+    setCurrentPrompt(promptList[Math.floor(Math.random() * promptList.length)]);
+  };
 
   const [history, setHistory] = useState([]);
   const [editingId, setEditingId] = useState(null);
-
   const [freeDirty, setFreeDirty] = useState(false);
   const [promptedDirty, setPromptedDirty] = useState(false);
   const [saveLabel, setSaveLabel] = useState("");
+  const [saving, setSaving] = useState(false);
 
+  // 3. Input Handlers
   const handleFreeTitleChange = (val) => {
     setFreeTitle(val);
     if (!freeDirty && val) setFreeDirty(true);
@@ -101,53 +127,58 @@ export default function JournalPage() {
     if (saveLabel) setSaveLabel("");
   };
 
-  useEffect(() => {
-    if (saveLabel === "saved") {
-      const timer = setTimeout(() => setSaveLabel(""), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveLabel]);
 
-  const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
-  const showSave = isDirty && saveLabel !== "saved";
+const handleSave = async () => {
+  if (!isLoaded || !isSignedIn || !user) {
+    alert("Authentication not ready. Please wait.");
+    return;
+  }
 
-  const handleSave = () => {
-    const title = activeTab === 0 ? freeTitle : promptedTitle;
-    const body = activeTab === 0 ? freeBody : promptedBody;
-    const type = activeTab === 0 ? "Free Writing" : "Prompted";
-    const { date, time } = formatDateTime();
+  const isFree = activeTab === 0;
+  const title = (isFree ? freeTitle : promptedTitle) || "Untitled";
+  const body = isFree ? freeBody : promptedBody;
+  const type = isFree ? "Free Writing" : "Prompted";
+  const prompt = isFree ? null : currentPrompt;
 
-    const entry = {
-      id: editingId || Date.now(),
-      title: title || "Untitled",
-      date,
-      time,
-      type,
-      body,
-      preview: body.length > 80 ? body.slice(0, 80) + "…" : body,
-    };
+  if (!body.trim()) return;
 
-    if (editingId) {
-      setHistory((prev) => prev.map((h) => (h.id === editingId ? entry : h)));
-    } else {
-      setHistory((prev) => [entry, ...prev]);
-    }
+  const fullTextForAI = `Title: ${title}\nContent: ${body}`;
+  setSaving(true);
+
+  try {
+    const res = await fetch("/api/journal/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.id,
+        title,
+        body,               // Firestore
+        text: fullTextForAI, // Vector DB (Python)
+        type,               // Metadata
+        prompt,
+        id: editingId || Date.now(),
+      }),
+    });
+
+    if (!res.ok) throw new Error("Save failed");
+
     setSaveLabel("saved");
+    setEditingId(null);
 
-    if (!editingId) {
-      if (activeTab === 0) {
-        setFreeTitle("");
-        setFreeBody("");
-      }
-      if (activeTab === 1) {
-        setPromptedTitle("");
-        setPromptedBody("");
-      }
+    // Clear the active editor
+    if (isFree) {
+      setFreeTitle(""); setFreeBody(""); setFreeDirty(false);
+    } else {
+      setPromptedTitle(""); setPromptedBody(""); setPromptedDirty(false);
     }
+  } catch (err) {
+    console.error("Save Error:", err);
+    alert("Cloud sync failed. Is your Python bridge running?");
+  } finally {
+    setSaving(false);
+  }
+};
 
-    if (activeTab === 0) setFreeDirty(false);
-    if (activeTab === 1) setPromptedDirty(false);
-  };
 
   const handleHistoryClick = (entry) => {
     const tabIndex = entry.type === "Free Writing" ? 0 : 1;
@@ -165,6 +196,53 @@ export default function JournalPage() {
     setActiveTab(tabIndex);
   };
 
+useEffect(() => {
+  if (!isLoaded || !isSignedIn || !user) return;
+
+  if (saveLabel === "saved") {
+    const timer = setTimeout(() => setSaveLabel(""), 2000);
+    return () => clearTimeout(timer);
+  }
+
+  if (activeTab === 2) {
+    (async () => {
+      try {
+        const res = await fetch("/api/journal/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "list", userId: user.id }),
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          // --- THE CRITICAL FIX: Mapping the fields for the UI ---
+          const formattedHistory = (data.items || []).map((item) => {
+            // Use the createdAt string from the API, fallback to now if missing
+            const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
+            
+            return {
+              ...item,
+              // Create the specific 'date' and 'time' strings the JSX needs
+              date: dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+              time: dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+              // Ensure preview exists even if it wasn't saved correctly
+              preview: item.preview || (item.body ? item.body.slice(0, 80) + "..." : "No content")
+            };
+          });
+          
+          setHistory(formattedHistory);
+        }
+      } catch (err) {
+        console.error("History fetch failed:", err);
+      }
+    })();
+  }
+}, [activeTab, isLoaded, isSignedIn, user, saveLabel]);
+
+  // 6. UI Helpers
+  const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
+  const showSave = isDirty && saveLabel !== "saved";
+
   return (
     <>
       <div className={styles.bg} aria-hidden="true" />
@@ -175,13 +253,13 @@ export default function JournalPage() {
               <h1 className={styles.title}>Journal</h1>
               <p className={styles.subtitle}>Express your thoughts</p>
             </div>
-            {(showSave || saveLabel === "saved") && (
+            {(showSave || saveLabel === "saved" || saving) && (
               <button
                 className={`${styles.saveBtn} ${saveLabel === "saved" ? styles.saveBtnDone : ""}`}
-                onClick={saveLabel === "saved" ? undefined : handleSave}
-                disabled={saveLabel === "saved"}
+                onClick={saveLabel === "saved" || saving ? undefined : handleSave}
+                disabled={saveLabel === "saved" || saving}
               >
-                {saveLabel === "saved" ? "Saved!" : "Save"}
+                {saving ? "Saving..." : saveLabel === "saved" ? "Saved!" : "Save"}
               </button>
             )}
           </div>
@@ -220,7 +298,16 @@ export default function JournalPage() {
                 <SparkleIcon />
               </span>
               <div>
-                <p className={styles.promptLabel}>Today&apos;s Prompt</p>
+                <div className={styles.promptHeader}>
+                  <p className={styles.promptLabel}>Today&apos;s Prompt</p>
+                  <button 
+                    className={styles.refreshBtn} 
+                    onClick={refreshPrompt}
+                    aria-label="Get a new prompt"
+                  >
+                    <RefreshIcon />
+                  </button>
+                </div>
                 <p className={styles.promptText}>{currentPrompt}</p>
               </div>
             </div>

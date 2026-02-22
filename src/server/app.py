@@ -1,3 +1,4 @@
+import numpy as np
 from flask import Flask, request, jsonify
 from model.infer import predict_stress, calculate_metrics_from_rr
 

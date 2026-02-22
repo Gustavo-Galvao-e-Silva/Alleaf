@@ -1,8 +1,14 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
+
+import { useAuth } from "@clerk/nextjs"; // <--- ADD THIS
+
+import { db } from "@/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import ExerciseList from '../components/ExerciseList';
 
 export default function TherapyPage() {
+  const { userId } = useAuth();
   const [session, setSession] = useState(null);
   const [chat, setChat] = useState([]);
   const [input, setInput] = useState("");
@@ -17,24 +23,36 @@ export default function TherapyPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+
   useEffect(() => {
-    scrollToBottom();
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, loading]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const notesFromURL = params.get('notes');
+    if (notesFromURL) {
+      setUserNotes(notesFromURL);
+    }
+  }, []);
+
+
 
   // STEP 2 & 3: Start session and get "Food for Thought" from Gemini via Research Node
   const startSession = async () => {
+    if (!userId) return;
     setLoading(true);
     try {
       const res = await fetch('/api/therapy/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'horyzon', userNotes: userNotes })
+        body: JSON.stringify({ userId: userId, userNotes: userNotes })
       });
       const data = await res.json();
 
       setSession({
         evidence: data.evidenceFound, // The clinical themes found in Actian
-        user_id: 'horyzon',
+        user_id: userId,
         agenda: data.agenda
       });
       
@@ -52,7 +70,7 @@ export default function TherapyPage() {
    
      const userMsg = { role: 'user', content: input };
      const currentChat = [...chat, userMsg];
-     setChat(currentChat);
+     setChat(prev => [...prev, userMsg, { role: 'assistant', content: "" }]);
      setInput("");
      setLoading(true);
    
@@ -61,7 +79,7 @@ export default function TherapyPage() {
    
      const response = await fetch('/api/therapy/chat_stream', { // Hit a new streaming proxy
        method: 'POST',
-       body: JSON.stringify({ userId: 'horyzon', message: input, transcript: chat, evidence: session.evidence, agenda: session.agenda })
+       body: JSON.stringify({ userId: userId, message: input, transcript: currentChat, evidence: session.evidence, agenda: session.agenda })
      });
    
      const reader = response.body.getReader();
@@ -85,28 +103,41 @@ export default function TherapyPage() {
      setLoading(false);
    };
 
-    const finishSession = async () => {
-    setLoading(true);
-    try {
-      // Create a proxy for this in /api/therapy/end/route.js or hit bridge via proxy
-      const res = await fetch('/api/therapy/end', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: 'horyzon',
-          transcript: chat,
-          evidence: session.evidence,
-	  agenda: session.agenda
-        })
-      });
-      const data = await res.json();
-      setExercises(data.exercises);
-    } catch (err) {
-      console.error("Wrap up error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+
+
+const finishSession = async () => {
+  if (!userId) return;
+  setLoading(true);
+  try {
+    const res = await fetch('/api/therapy/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: userId, 
+        transcript: chat,
+        evidence: session.evidence,
+        agenda: session.agenda
+      })
+    });
+    const data = await res.json();
+    setExercises(data.exercises);
+
+    // PERSISTENCE: Overwrite the Firestore document
+    const planDocRef = doc(db, "users", userId, "plans", "current");
+    await setDoc(planDocRef, {
+      exercises: data.exercises,
+      updatedAt: Date.now()
+    }, { merge: true }); // 'merge' ensures we don't delete other user settings
+
+  } catch (err) {
+    console.error("Firestore save failed:", err);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 
   // Render Exercise Results View
   if (exercises) {

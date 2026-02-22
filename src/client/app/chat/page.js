@@ -1,5 +1,9 @@
 "use client";
 
+import { db } from "@/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { useAuth } from "@clerk/nextjs";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -147,45 +151,11 @@ function VoiceInputController({
   const isThreadRunning = useAuiState((state) => state.thread.isRunning);
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
-  const hasValidatedAgentRef = useRef(false);
 
   useEffect(() => {
     onAwaitingResponseChange?.(Boolean(isVoiceRunning && isThreadRunning));
   }, [isVoiceRunning, isThreadRunning, onAwaitingResponseChange]);
 
-  useEffect(() => {
-    if (!isVoiceRunning || hasValidatedAgentRef.current) return;
-
-    let isCancelled = false;
-
-    const validateAgent = async () => {
-      try {
-        const response = await fetch("/api/elevenlabs/signed-url", {
-          method: "GET",
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload?.error || "Failed to validate ElevenLabs agent");
-        }
-
-        hasValidatedAgentRef.current = true;
-      } catch (error) {
-        if (isCancelled) return;
-        onVoiceInputError?.(
-          error instanceof Error
-            ? error.message
-            : "Failed to initialize ElevenLabs voice mode",
-        );
-      }
-    };
-
-    validateAgent();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [isVoiceRunning, onVoiceInputError]);
 
   useEffect(() => {
     const recognition = recognitionRef.current;
@@ -297,34 +267,37 @@ function VoiceInputController({
 function extractAssistantText(message) {
   if (!message || message.role !== "assistant") return "";
 
-  const chunks = [];
-
-  if (typeof message.content === "string") {
-    chunks.push(message.content);
-  }
-
-  if (Array.isArray(message.content)) {
-    for (const part of message.content) {
-      if (part && typeof part.text === "string") {
-        chunks.push(part.text);
-      }
-    }
-  }
-
   if (Array.isArray(message.parts)) {
+    const chunks = [];
     for (const part of message.parts) {
       if (part?.type === "text" && typeof part.text === "string") {
         chunks.push(part.text);
       }
     }
+    const text = chunks.join("\n").replace(/\s+/g, " ").trim();
+    if (text) return text;
   }
 
-  return chunks.join("\n").replace(/\s+/g, " ").trim();
+  if (typeof message.content === "string") {
+    return message.content.replace(/\s+/g, " ").trim();
+  }
+
+  if (Array.isArray(message.content)) {
+    const chunks = [];
+    for (const part of message.content) {
+      if (part && typeof part.text === "string") {
+        chunks.push(part.text);
+      }
+    }
+    return chunks.join("\n").replace(/\s+/g, " ").trim();
+  }
+
+  return "";
 }
 
 function VoiceOutputController({ isVoiceRunning, onVoiceOutputError }) {
-  const messages = useAuiState((state) => state.thread.messages);
   const isThreadRunning = useAuiState((state) => state.thread.isRunning);
+  const messages = useAuiState((state) => state.thread.messages);
 
   const spokenMessageIdsRef = useRef(new Set());
   const lastSpokenSignatureRef = useRef("");
@@ -528,9 +501,28 @@ function deriveAppointmentSessionState(requestedAppointmentId, revision) {
   };
 }
 
+// This component "lives" inside the provider, so it can see the messages
+function MessageSync({ onUpdate }) {
+  const messages = useAuiState((state) => state.thread.messages);
+  useEffect(() => {
+    onUpdate(messages);
+  }, [messages, onUpdate]);
+  return null;
+}
+
 export default function ChatPage() {
+  const messagesRef = useRef([]); // This will hold our real transcript
+
+  const [hasMounted, setHasMounted] = useState(false);
+
+useEffect(() => {
+    setHasMounted(true); // Set to true once the browser loads
+  }, []);
+
+  const { userId } = useAuth(); // Get the real Clerk ID
   const router = useRouter();
   const searchParams = useSearchParams();
+  const userNotes = searchParams.get("notes") || "";
   const requestedAppointmentId = searchParams.get("appointment");
   const [sessionRevision, setSessionRevision] = useState(0);
   const [isVoiceOpen, setIsVoiceOpen] = useState(() => {
@@ -609,16 +601,15 @@ export default function ChatPage() {
     }
   }, [appointmentSessionState]);
 
-  const runtime = useChatRuntime({
-    transport: new AssistantChatTransport({
-      api: "/api/chat",
-      body: {
-        input_mode: "text",
-        appointment_id: activeAppointmentSession?.appointmentId || null,
-        context_items: contextItems,
-      },
-    }),
-  });
+const runtime = useChatRuntime({
+  transport: new AssistantChatTransport({
+    api: "/api/chat",
+    body: {
+      userId: userId,     // Pass ID for Vector DB lookup
+      userNotes: userNotes // Pass notes for the Research Node
+    },
+  }),
+});
 
   const handleOrbClick = () => {
     setVoiceInputError("");
@@ -629,18 +620,39 @@ export default function ChatPage() {
     setIsVoiceRunning(true);
   };
 
-  const handleEndSession = () => {
-    if (!activeAppointmentSession?.appointmentId) return;
 
-    stopVoiceMode();
-    setIsVoiceOpen(false);
-    completeAppointment(activeAppointmentSession.appointmentId, {
-      summaryPlaceholder: "",
+  const handleEndSession = async () => {
+  if (!activeAppointmentSession?.appointmentId) return;
+  stopVoiceMode();
+  try {
+    // 1. Trigger the Python Wrap-up Node
+    const chatTranscript = messagesRef.current; 
+
+    console.log("Sending transcript length:", chatTranscript.length); // Debug log
+	 
+    const res = await fetch('http://localhost:5001/therapy/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, transcript: chatTranscript })
     });
+    const data = await res.json();
+
+    // 2. Overwrite the Firestore document with new exercises
+    if (data.exercises) {
+      const planDocRef = doc(db, "users", userId, "plans", "current");
+      await setDoc(planDocRef, {
+        exercises: data.exercises,
+        updatedAt: Date.now()
+      }, { merge: true });
+    }
+
+    // 3. Cleanup local storage and redirect home
+    completeAppointment(activeAppointmentSession.appointmentId, { summaryPlaceholder: "" });
     clearActiveAppointmentSession();
-    setSessionRevision((value) => value + 1);
-    router.replace("/chat");
-  };
+    router.replace("/"); // Go back to see the new exercises on the home page!
+  } catch (e) { console.error("End session failed", e); }
+};
+
 
   return (
     <>
@@ -653,11 +665,16 @@ export default function ChatPage() {
             }`}
           >
             <header className={styles.chatTopBar}>
-              <p className={styles.chatTopBarTitle}>
-                {activeAppointment
-                  ? buildAppointmentTitle(activeAppointment)
-                  : "Therapist Chat"}
-              </p>
+
+            <p className={styles.chatTopBarTitle}>
+              {!hasMounted 
+                ? "Therapist Chat" // Default for Server
+                : activeAppointment
+                  ? buildAppointmentTitle(activeAppointment) // Real data for Client
+                  : "Therapist Chat"
+              }
+            </p>
+
               {activeAppointment ? (
                 <button
                   type="button"
@@ -671,6 +688,7 @@ export default function ChatPage() {
 
             <div className={styles.chatPanel}>
               <AssistantRuntimeProvider runtime={runtime}>
+	        <MessageSync onUpdate={(m) => (messagesRef.current = m)} />
                 <VoiceInputController
                   isVoiceRunning={isVoiceRunning}
                   onVoiceInputError={handleVoiceInputError}
