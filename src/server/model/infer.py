@@ -37,7 +37,7 @@ def predict_stress(
         feature_order = payload["features"]
 
     bmi = user_info["weight"] / ((user_info["height"] / 100) ** 2)
-    male_val = 1 if user_info["gender"] == "M" else 0
+    male_val = 1 if user_info["sex"] == "M" else 0
     smoker_val = 1 if user_info["smoker"] == "Y" else 0
 
     hr_delta = current_metrics["mean_hr"] - baseline_metrics["mean_hr"]
