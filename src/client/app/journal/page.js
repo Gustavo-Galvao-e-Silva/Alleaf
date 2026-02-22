@@ -127,78 +127,58 @@ export default function JournalPage() {
     if (saveLabel) setSaveLabel("");
   };
 
-  // 4. Persistence Logic
-  const handleSave = async () => {
-    // Safety guard for Clerk loading
-    if (!isLoaded || !isSignedIn || !user) {
-      alert("Authentication not ready. Please wait.");
-      return;
-    }
 
-    const title = activeTab === 0 ? freeTitle : promptedTitle;
-    const body = activeTab === 0 ? freeBody : promptedBody;
-    const type = activeTab === 0 ? "Free Writing" : "Prompted";
-    const { date, time } = formatDateTime();
+const handleSave = async () => {
+  if (!isLoaded || !isSignedIn || !user) {
+    alert("Authentication not ready. Please wait.");
+    return;
+  }
 
-    if (!body.trim()) return;
+  const isFree = activeTab === 0;
+  const title = (isFree ? freeTitle : promptedTitle) || "Untitled";
+  const body = isFree ? freeBody : promptedBody;
+  const type = isFree ? "Free Writing" : "Prompted";
+  const prompt = isFree ? null : currentPrompt;
 
-    const fullTextForAI = `Title: ${title || "Untitled"}\nContent: ${body}`;
-    setSaving(true);
+  if (!body.trim()) return;
 
-    try {
-      // Hit the Next.js API route which proxies to Python
-      const response = await fetch('/api/journal/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id, 
-          text: fullTextForAI,
-          id: editingId || Date.now(),
-        })
-      });
+  const fullTextForAI = `Title: ${title}\nContent: ${body}`;
+  setSaving(true);
 
-      if (!response.ok) throw new Error("Failed to sync with backend");
-
-      const entry = {
+  try {
+    const res = await fetch("/api/journal/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.id,
+        title,
+        body,               // Firestore
+        text: fullTextForAI, // Vector DB (Python)
+        type,               // Metadata
+        prompt,
         id: editingId || Date.now(),
-        title: title || "Untitled",
-        date,
-        time,
-        type,
-        body,
-        preview: body.length > 80 ? body.slice(0, 80) + "…" : body,
-      };
+      }),
+    });
 
-      if (editingId) {
-        setHistory((prev) => prev.map((h) => (h.id === editingId ? entry : h)));
-      } else {
-        setHistory((prev) => [entry, ...prev]);
-      }
+    if (!res.ok) throw new Error("Save failed");
 
-      setSaveLabel("saved");
-      setEditingId(null);
+    setSaveLabel("saved");
+    setEditingId(null);
 
-      // Reset editors for new entries
-      if (!editingId) {
-        if (activeTab === 0) {
-          setFreeTitle("");
-          setFreeBody("");
-        } else {
-          setPromptedTitle("");
-          setPromptedBody("");
-        }
-      }
-
-      setFreeDirty(false);
-      setPromptedDirty(false);
-
-    } catch (err) {
-      console.error("Journal Save Error:", err);
-      alert("Could not save to the cloud. Check if the backend is running.");
-    } finally {
-      setSaving(false);
+    // Clear the active editor
+    if (isFree) {
+      setFreeTitle(""); setFreeBody(""); setFreeDirty(false);
+    } else {
+      setPromptedTitle(""); setPromptedBody(""); setPromptedDirty(false);
     }
-  };
+  } catch (err) {
+    console.error("Save Error:", err);
+    alert("Cloud sync failed. Is your Python bridge running?");
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   const handleHistoryClick = (entry) => {
     const tabIndex = entry.type === "Free Writing" ? 0 : 1;
@@ -216,13 +196,48 @@ export default function JournalPage() {
     setActiveTab(tabIndex);
   };
 
-  // 5. Effects
-  useEffect(() => {
-    if (saveLabel === "saved") {
-      const timer = setTimeout(() => setSaveLabel(""), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveLabel]);
+useEffect(() => {
+  if (!isLoaded || !isSignedIn || !user) return;
+
+  if (saveLabel === "saved") {
+    const timer = setTimeout(() => setSaveLabel(""), 2000);
+    return () => clearTimeout(timer);
+  }
+
+  if (activeTab === 2) {
+    (async () => {
+      try {
+        const res = await fetch("/api/journal/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "list", userId: user.id }),
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          // --- THE CRITICAL FIX: Mapping the fields for the UI ---
+          const formattedHistory = (data.items || []).map((item) => {
+            // Use the createdAt string from the API, fallback to now if missing
+            const dateObj = item.createdAt ? new Date(item.createdAt) : new Date();
+            
+            return {
+              ...item,
+              // Create the specific 'date' and 'time' strings the JSX needs
+              date: dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+              time: dateObj.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+              // Ensure preview exists even if it wasn't saved correctly
+              preview: item.preview || (item.body ? item.body.slice(0, 80) + "..." : "No content")
+            };
+          });
+          
+          setHistory(formattedHistory);
+        }
+      } catch (err) {
+        console.error("History fetch failed:", err);
+      }
+    })();
+  }
+}, [activeTab, isLoaded, isSignedIn, user, saveLabel]);
 
   // 6. UI Helpers
   const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
