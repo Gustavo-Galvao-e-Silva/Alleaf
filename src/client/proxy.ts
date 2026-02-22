@@ -21,9 +21,16 @@ export default clerkMiddleware(async (auth, req) => {
   if (!userId || isApiRoute(req)) return;
 
   // Read publicMetadata directly from the user object — always up-to-date, no JWT lag
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
-  const metadata = (user.publicMetadata ?? {}) as UserMetadata;
+  let metadata: UserMetadata = {};
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    metadata = (user.publicMetadata ?? {}) as UserMetadata;
+  } catch {
+    // userId exists in the session token but the user is not found in Clerk
+    // (e.g. deleted account, stale cookie) — treat as signed out
+    return NextResponse.redirect(new URL('/sign-in', req.url));
+  }
 
   // Signed in but onboarding not complete → force to /onboarding
   if (!metadata.onboardingComplete && !isOnboardingRoute(req) && !isPublicRoute(req)) {

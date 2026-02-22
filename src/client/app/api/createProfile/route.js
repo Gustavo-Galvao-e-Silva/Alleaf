@@ -1,12 +1,23 @@
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/firebase";
 
+function calculateAge(dateOfBirth) {
+  const dob = new Date(dateOfBirth + "T00:00:00");
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasHadBirthday =
+    today.getMonth() > dob.getMonth() ||
+    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if (!hasHadBirthday) age -= 1;
+  return age;
+}
+
 export async function POST(req) {
   try {
     const {
       userId,
       name,
-      age,
+      dateOfBirth,
       sex,
       height,
       weight,
@@ -15,13 +26,16 @@ export async function POST(req) {
       sleepDuration,
     } = await req.json();
 
+    const age = calculateAge(dateOfBirth);
+
     await setDoc(doc(db, "users", userId), {
       name,
-      age: Number(age),
+      dateOfBirth,
+      age,
       sex,
       height: Number(height),
       weight: Number(weight),
-      smoker: smoker === "yes" ? "y" : "n",
+      smoker: smoker === "yes" ? "Y" : "N",
       activityLevel,
       sleepDuration: Number(sleepDuration),
       baselineRR: null,
