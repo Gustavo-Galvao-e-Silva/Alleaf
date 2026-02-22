@@ -1,5 +1,8 @@
 "use client";
 
+import { db } from "@/firebase";
+import { doc, onSnapshot } from "firebase/firestore"; // Firestore functions
+
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { format, startOfToday } from "date-fns";
@@ -61,23 +64,38 @@ const ICON_BY_TYPE = {
 };
 
 function parseExercises(data) {
-  return (data.exercises || []).map((raw, i) => {
+  // Ensure we are working with an array
+  const exerciseList = Array.isArray(data) ? data : data.exercises || [];
+
+  return exerciseList.map((raw, i) => {
     const isInteractive = raw.type === "interactive";
-    const lines = isInteractive
-      ? raw.content.split("[BREAK]").map((s) => s.trim()).filter(Boolean)
-      : [];
+
+    let lines = [];
+    if (isInteractive) {
+      if (Array.isArray(raw.content)) {
+        // It's already an array (from your JSON file)
+        lines = raw.content;
+      } else if (typeof raw.content === "string") {
+        // It's a string (from the AI/Firestore) -> Split it into lines
+        lines = raw.content
+          .split(/\n|\[BREAK\]/) // Split by newlines OR your [BREAK] tag
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+    }
+
     const estimatedMinutes = isInteractive
       ? Math.max(1, Math.round((lines.length * 10) / 60))
-      : Math.max(1, Math.round(raw.content.length / 800));
+      : Math.max(1, Math.round((raw.content?.length || 0) / 800));
 
     return {
-      id: raw.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      id: raw.id || raw.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       name: raw.title,
       type: raw.type,
       accent: ACCENT_CYCLE[i % ACCENT_CYCLE.length],
       icon: ICON_BY_TYPE[raw.type] || ICON_BY_TYPE.interactive,
-      duration: `${estimatedMinutes} min`,
-      content: isInteractive ? lines : null,
+      duration: raw.duration || `${estimatedMinutes} min`,
+      content: lines, // Now guaranteed to be an array
       rawContent: !isInteractive ? raw.content : null,
     };
   });
@@ -418,7 +436,51 @@ function buildScheduledDateFromSelection(selection) {
 
 export default function Home() {
   const router = useRouter();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId } = useAuth();
+
+  const [sessionMemory, setSessionMemory] = useState(null);
+  const [displayExercises, setDisplayExercises] = useState(EXERCISES); // Start with templates
+
+  // 1. Fetch Session Recap from Vector DB (Actian Cortex)
+  useEffect(() => {
+    const loadRecentMemory = async () => {
+      if (!userId) return;
+      try {
+        const response = await fetch('/api/journal/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, query: "latest session summary" })
+        });
+        const data = await response.json();
+        if (data && data.length > 0) setSessionMemory(data[0].text);
+      } catch (err) { console.log("No recap found."); }
+    };
+    loadRecentMemory();
+  }, [userId]);
+
+
+
+useEffect(() => {
+  if (!userId) return;
+
+  const planDocRef = doc(db, "users", userId, "plans", "current");
+
+  const unsubscribe = onSnapshot(planDocRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.data();
+      if (data.exercises) {
+        // CRITICAL: Parse the AI exercises so the 'content' string becomes an array
+        const formatted = parseExercises(data.exercises);
+        setDisplayExercises(formatted);
+      }
+    } else {
+      setDisplayExercises(EXERCISES);
+    }
+  });
+
+  return () => unsubscribe();
+}, [userId]);
+
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -427,7 +489,15 @@ export default function Home() {
   }, [isLoaded, isSignedIn, router]);
 
   const [activeExercise, setActiveExercise] = useState(null);
-  const [appointments, setAppointments] = useState(() => readAppointments());
+
+const [appointments, setAppointments] = useState([]); // Start empty
+const [hasMounted, setHasMounted] = useState(false)
+
+useEffect(() => {
+  setAppointments(readAppointments());
+  setHasMounted(true);
+}, []);
+
   const [scheduleSelection, setScheduleSelection] = useState(() =>
     getDefaultScheduleSelection(),
   );
@@ -516,21 +586,21 @@ export default function Home() {
   };
 
   const handleStartSession = (appointmentId) => {
+    // 1. Keep your friends' appointment tracking logic
     const startedAppointment = markAppointmentSessionStarted(appointmentId);
-    if (!startedAppointment || startedAppointment.status !== "scheduled")
-      return;
+    if (!startedAppointment || startedAppointment.status !== "scheduled") return;
 
     const activeSession = {
       appointmentId: startedAppointment.id,
       startedAt: startedAppointment.startedAt || new Date().toISOString(),
       contextItems: buildContextItemsFromAppointment(startedAppointment),
     };
-
     writeActiveAppointmentSession(activeSession);
     setAppointments(readAppointments());
-    router.push(
-      `/chat?appointment=${encodeURIComponent(startedAppointment.id)}`,
-    );
+
+    // 2. NEW: Extract the notes and redirect to /therapy instead of /chat
+    const notes = startedAppointment.therapistNotes || "";
+    router.push(`/therapy?notes=${encodeURIComponent(notes)}`);
   };
 
   const handleCancelSession = (appointmentId) => {
@@ -549,6 +619,21 @@ export default function Home() {
     <>
       <div className={styles.videoBg} aria-hidden="true" />
       <main className={styles.page}>
+
+
+{/* ADD THIS: The Recap Card UI */}
+        {sessionMemory && (
+          <section className="px-6 mt-8">
+            <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-white shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2">💡 Last Session Recap</p>
+              <p className="text-gray-700 italic text-sm leading-relaxed">"{sessionMemory}"</p>
+            </div>
+          </section>
+        )}
+
+
+
+
         {/* Hero */}
         <section className={styles.hero}>
           <span className={styles.sparkleIcon}>
@@ -585,11 +670,14 @@ export default function Home() {
             </button>
           </div>
 
-          <div className={styles.scheduleCard}>
-            <div className={styles.appointmentList}>
-            {scheduledAppointments.length === 0 ? (
-              <p className={styles.emptySchedule}>No scheduled meetings yet.</p>
-            ) : (
+              <div className={styles.scheduleCard}>
+                <div className={styles.appointmentList}>
+                  {/* Wrap with hasMounted check */}
+                  {!hasMounted ? (
+                    null // Or a small loading spinner
+                  ) : scheduledAppointments.length === 0 ? (
+                    <p className={styles.emptySchedule}>No scheduled meetings yet.</p>
+                  ) : (
               scheduledAppointments.map((appointment) => {
                 const scheduledDate = new Date(appointment.scheduledAt);
                 const today = new Date();
@@ -819,7 +907,7 @@ export default function Home() {
         <section className={styles.exercisesSection}>
           <h2 className={styles.sectionTitle}>Wellness Exercises</h2>
           <div className={styles.exerciseList}>
-            {EXERCISES.map((ex) => {
+            {displayExercises.map((ex) => {
               const isInteractive = ex.type === "interactive";
               const typeLabel = isInteractive ? "Exercise" : "Meditation";
               return (
