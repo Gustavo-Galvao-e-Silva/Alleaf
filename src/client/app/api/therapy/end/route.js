@@ -8,7 +8,8 @@ export async function POST(req) {
       body: JSON.stringify({
           user_id: body.userId,
           transcript: body.transcript,
-          evidence: body.evidence
+          evidence: body.evidence,
+	  agenda: body.agenda
       })
     });
 

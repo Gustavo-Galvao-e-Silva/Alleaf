@@ -44,22 +44,28 @@ def research_node(state: TherapySessionState):
     unique_evidence = list(set(all_evidence))
     evidence_context = "\n".join([f"- {text}" for text in unique_evidence]) if unique_evidence else "No recent logs."
 
-    # 2. GENERATE AGENDA: Synthesize notes + history
+    safe_notes = user_notes if user_notes.strip() else "The user is starting a general check-in."
+    safe_evidence = evidence_context if evidence_context.strip() else "No previous history available."
+
     agenda_prompt = f"""
     You are a clinical supervisor. Create a 3-point "Session Agenda" for the AI Therapist.
-    
-    USER'S CURRENT CONCERNS (Pre-session notes): {user_notes}
-    USER'S HISTORY: {evidence_context}
+
+    USER'S CURRENT CONCERNS: {safe_notes}
+    USER'S HISTORY: {safe_evidence}
 
     Format this as a clear 'Weighted List of Objectives' for the therapist to follow.
     """
 
     try:
-        agenda_response = llm.invoke([SystemMessage(content=agenda_prompt)])
+        # USE A LIST OF MESSAGES explicitly
+        agenda_response = llm.invoke([
+            SystemMessage(content="You are a clinical strategy assistant."),
+            HumanMessage(content=agenda_prompt) # Google GenAI prefers a HumanMessage following a SystemMessage
+        ])
         agenda = ensure_text(agenda_response.content)
     except Exception as e:
         print(f"Agenda Generation Error: {e}")
-        agenda = "Provide general empathetic support and address user concerns."
+        agenda = "1. Establish rapport. 2. Conduct a mood check. 3. Explore current stressors."
 
     # 3. Generate Opening
     try:
@@ -121,21 +127,33 @@ def therapist_node(state: TherapySessionState):
 # but could optionally use state.get('agenda') for better summaries.
 
 def wrap_up_node(state: TherapySessionState):
-    exercise_prompt = """
-    Generate exactly 3 tailored mental health exercises.
-    Each exercise must be one of two types: "asynchronous" or "interactive".
+    agenda = state.get('agenda', "General emotional support.")
 
-    1. Asynchronous: Static instructions for the user to read.
-    2. Interactive: A script for a guided session.
-       - Use the [BREAK] token between sentences where the AI should stop reading and wait for the user.
-       - Example: "Close your eyes. [BREAK] Now, take a deep breath. [BREAK] Hold it for 4 seconds."
-
-    Return ONLY a JSON list of objects:
-    {"type": "interactive"|"asynchronous", "title": "...", "content": "..."}
-    """
-    # NEW: We also need a prompt for the summary
-    summary_prompt = "Summarize the key personal details and emotional state from this chat in 2 concise sentences for long-term memory."
+    # REFINED: Combining agenda-awareness with strict formatting
+    exercise_prompt = f"""
+    Generate exactly 3 tailored mental health exercises based on the session history.
     
+    ORIGINAL SESSION GOALS:
+    {agenda}
+
+    Check the transcript: if a goal was missed, make an exercise for it. 
+    If a goal was met, provide an advanced "next step."
+
+    Each exercise must be one of two types: "asynchronous" (static text) or "interactive" (guided session).
+    
+    CRITICAL FORMATTING FOR INTERACTIVE EXERCISES:
+    - Use the [BREAK] token between sentences where the AI should pause for the user.
+    - Example: "Close your eyes. [BREAK] Now, take a deep breath. [BREAK]"
+
+    Return ONLY a JSON list:
+    [{{"type": "interactive"|"asynchronous", "title": "...", "content": "..."}}]
+    """
+
+    summary_prompt = f"""
+    Summarize key personal details and emotional state in 2 concise sentences for long-term memory.
+    Briefly acknowledge if these session goals were addressed: {agenda}
+    """
+
     history = "\n".join([f"{'User' if isinstance(m, HumanMessage) else 'Therapist'}: {m.content}" for m in state['transcript']])
 
     # --- PART 1: Generate the Summary (The "Memory" part) ---

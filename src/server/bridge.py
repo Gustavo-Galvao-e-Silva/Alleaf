@@ -75,9 +75,20 @@ def save_chat():
 def start_agent():
     research_node, _, _ = get_agent_nodes()
     data = request.json
-    state = {"user_id": data.get('user_id'), "transcript": [], "evidence": []}
+    # Inject user_notes into the initial state
+    state = {
+        "user_id": data.get('user_id'), 
+        "session_id": str(int(time.time())), # Add a timestamp-based ID
+        "user_notes": data.get('user_notes', ""), 
+        "transcript": [], 
+        "evidence": []
+    }
     result = research_node(state)
-    return jsonify({"food_for_thought": result['food_for_thought'], "evidence": result['evidence']})
+    return jsonify({
+        "food_for_thought": result['food_for_thought'], 
+        "evidence": result['evidence'],
+        "agenda": result['agenda'] # Send the generated agenda back to Next.js
+    })
 
 @app.route('/agent/run_session', methods=['POST'])
 def run_session():
@@ -88,7 +99,8 @@ def run_session():
     history = [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in raw_transcript]
     history.append(HumanMessage(content=data.get('message')))
 
-    state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', [])}
+    state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', []), "agenda": data.get('agenda'),
+        "session_id": data.get('session_id', 'active_session') }
     result = therapist_node(state)
 
     # Cleanest possible response - agents.py did the hard work
@@ -107,7 +119,7 @@ def end_session():
     raw_transcript = data.get('transcript', [])
     history = [HumanMessage(content=m['content']) if m['role'] == 'user' else AIMessage(content=m['content']) for m in raw_transcript]
 
-    state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', [])}
+    state = {"user_id": data.get('user_id'), "transcript": history, "evidence": data.get('evidence', []), "agenda": data.get('agenda')}
     result = wrap_up_node(state)
 
     # --- THE FIX: Actually save to Actian ---
@@ -170,9 +182,18 @@ def chat_stream():
         evidence_list = data.get('evidence', [])
         evidence_str = "\n".join(evidence_list) if evidence_list else "No previous context."
         user_id = data.get('user_id', 'unknown')
+        agenda = data.get('agenda', "Provide general emotional support.") #
 
         def generate():
-            system_prompt = f"You are a professional AI therapist. User ID: {user_id}. Context: {evidence_str}"
+            system_prompt = f"""
+            You are a professional AI therapist.
+            User ID: {user_id}
+
+            SESSION AGENDA:
+            {agenda}
+
+            CONTEXT: {evidence_str}
+            """
             messages = [SystemMessage(content=system_prompt)] + history
             
             # Use the .stream method for real-time tokens

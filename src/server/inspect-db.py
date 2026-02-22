@@ -3,16 +3,22 @@ import db
 def inspect_collection():
     print(f"--- Inspecting Collection: {db.COLLECTION} ---")
     try:
-        # We perform a 'dummy' search with a very broad filter to get results
-        # Actian doesn't have a 'get_all', so we search for 'anxiety' or similar
-        # and set top_k high to see the recent entries.
+        # STEP 1: Establish the connection
+        # Standalone scripts don't trigger the Flask startup logic,
+        # so we must connect manually.
+        db.client.connect()
         
-        # Alternatively, we can just fetch everything if the SDK allows, 
-        # but a top_k search on an empty string usually works for inspection.
+        # STEP 2: Check if collection exists before searching
+        if not db.client.has_collection(db.COLLECTION):
+            print(f"Error: Collection '{db.COLLECTION}' does not exist in the database.")
+            return
+
+        # STEP 3: Perform broad search
+        # We use a zero-vector to pull the most recent entries regardless of semantic similarity
         results = db.client.search(
-            db.COLLECTION, 
-            query=[0.0] * 384, # Dummy vector
-            top_k=50, 
+            db.COLLECTION,
+            query=[0.0] * 384, 
+            top_k=50,
             with_payload=True
         )
 
@@ -26,10 +32,12 @@ def inspect_collection():
             p_type = p.get('type', 'unknown')
             text = p.get('text', 'No text found')
             user = p.get('user_id', 'unknown')
-            
+
             print(f"[{i+1}] TYPE: {p_type} | USER: {user}")
-            print(f"    TEXT: {text[:150]}...") # Print first 150 chars
-            print("-" * 30)
+            # Clean up newlines for a prettier terminal output
+            clean_text = text.replace('\n', ' ')
+            print(f"    TEXT: {clean_text[:150]}...") 
+            print("-" * 40)
 
     except Exception as e:
         print(f"Error inspecting DB: {e}")

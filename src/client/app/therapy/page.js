@@ -8,6 +8,7 @@ export default function TherapyPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [exercises, setExercises] = useState(null);
+  const [userNotes, setUserNotes] = useState(""); // NEW
   
   // Ref for auto-scrolling the chat window
   const chatEndRef = useRef(null);
@@ -27,13 +28,14 @@ export default function TherapyPage() {
       const res = await fetch('/api/therapy/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'horyzon' })
+        body: JSON.stringify({ userId: 'horyzon', userNotes: userNotes })
       });
       const data = await res.json();
 
       setSession({
         evidence: data.evidenceFound, // The clinical themes found in Actian
-        user_id: 'horyzon'
+        user_id: 'horyzon',
+        agenda: data.agenda
       });
       
       // The opening message generated in agents.py
@@ -59,7 +61,7 @@ export default function TherapyPage() {
    
      const response = await fetch('/api/therapy/chat_stream', { // Hit a new streaming proxy
        method: 'POST',
-       body: JSON.stringify({ userId: 'horyzon', message: input, transcript: chat, evidence: session.evidence })
+       body: JSON.stringify({ userId: 'horyzon', message: input, transcript: chat, evidence: session.evidence, agenda: session.agenda })
      });
    
      const reader = response.body.getReader();
@@ -93,7 +95,8 @@ export default function TherapyPage() {
         body: JSON.stringify({
           userId: 'horyzon',
           transcript: chat,
-          evidence: session.evidence
+          evidence: session.evidence,
+	  agenda: session.agenda
         })
       });
       const data = await res.json();
@@ -137,6 +140,12 @@ export default function TherapyPage() {
           <p className="mb-8 text-gray-500 max-w-sm">
             I'll review your recent journal logs to help guide our conversation today.
           </p>
+	      <textarea
+  value={userNotes}
+  onChange={(e) => setUserNotes(e.target.value)}
+  placeholder="Today I want to talk about..."
+  className="w-full p-4 mb-4 border rounded-xl text-sm"
+/>
           <button
             onClick={startSession}
             disabled={loading}

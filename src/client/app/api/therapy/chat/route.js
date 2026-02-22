@@ -1,5 +1,5 @@
 export async function POST(req) {
-  const { userId, message, transcript, evidence } = await req.json();
+  const { userId, message, transcript, evidence, agenda } = await req.json();
 
   const res = await fetch('http://localhost:5001/agent/run_session', {
     method: 'POST',
@@ -8,7 +8,8 @@ export async function POST(req) {
         user_id: userId,
         message: message,
         transcript: transcript, // Pass history back to Python
-        evidence: evidence      // Pass evidence back to Python
+        evidence: evidence,      // Pass evidence back to Python
+	agenda: agenda
     })
   });
 
