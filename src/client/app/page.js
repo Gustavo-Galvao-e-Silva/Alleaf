@@ -39,7 +39,7 @@ import {
 } from "@/app/lib/appointments";
 
 import { useAuth } from "@clerk/nextjs";
-import exerciseData from "./data/exercises.json";
+import exerciseData from "./testData/exercises.json";
 
 const ACCENT_CYCLE = ["teal", "blue", "purple", "rose"];
 
