@@ -105,7 +105,7 @@ Bilateral stimulation has strong roots in clinical therapy (EMDR). We're making 
 
 ## 🏆 Built At
 
-This project was built during **[Hackalytics]** in **[2026]**.
+This project was built during **Hackalytics** in **2026**.
 
 ---
 
