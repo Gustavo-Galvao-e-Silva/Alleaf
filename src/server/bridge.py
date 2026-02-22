@@ -207,6 +207,86 @@ def chat_stream():
         print(f"Streaming Error: {e}")
         return jsonify({"error": str(e)}), 500
 
+def get_reply_from_agent(user_id, message, transcript, notes):
+    research_node, therapist_node, _ = get_agent_nodes()
+    
+    # 1. ROBUST TRANSCRIPT PARSING
+    history = []
+    for m in transcript:
+        # The Assistant UI often sends content as a list: [{"type": "text", "text": "..."}]
+        raw_content = m.get('content', "")
+        
+        if isinstance(raw_content, list):
+            # Extract and join all text parts
+            text = " ".join([part.get('text', '') for part in raw_content if part.get('type') == 'text'])
+        else:
+            text = str(raw_content)
+
+        # Clean up the text
+        text = text.strip()
+
+        # Skip if this is the message we are currently processing to avoid duplication
+        if text == message or not text:
+            continue
+            
+        if m.get('role') == 'user':
+            history.append(HumanMessage(content=text))
+        else:
+            history.append(AIMessage(content=text))
+    
+    # 2. SESSION INITIALIZATION
+    # If history is empty, this is the first turn
+    if not history:
+        initial_state = {
+            "user_id": user_id,
+            "user_notes": notes,
+            "transcript": [],
+            "evidence": []
+        }
+        res = research_node(initial_state)
+        agenda = res.get('agenda', "Provide empathetic support.")
+        evidence = res.get('evidence', [])
+    else:
+        agenda = "Continue the existing therapy session."
+        evidence = []
+
+    # 3. GET RESPONSE
+    state = {
+        "user_id": user_id,
+        "transcript": history + [HumanMessage(content=message)],
+        "agenda": agenda,
+        "evidence": evidence,
+        "session_id": "active_session"
+    }
+    
+    result = therapist_node(state)
+    return result['transcript'][-1].content
+
+# --- THE ROUTE ---
+@app.route('/chat', methods=['POST'])
+def handle_chat():
+    try:
+        data = request.json
+        # Use our refined helper
+        reply = get_reply_from_agent(
+            data.get('user_id'), 
+            data.get('message'), 
+            data.get('transcript', []), 
+            data.get('notes', "")
+        )
+        return jsonify({"reply": reply})
+    except Exception as e:
+        print(f"CRITICAL ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/therapy/end', methods=['POST'])
+def handle_end():
+    # Reuse your existing end_session logic but ensure the route name matches
+    return end_session()
+
+
+
 if __name__ == '__main__':
     db.init_db() # Ensure collection is created on startup
     app.run(port=5001, debug=True)

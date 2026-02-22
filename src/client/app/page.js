@@ -585,23 +585,23 @@ useEffect(() => {
     setIsScheduleDialogOpen(false);
   };
 
-  const handleStartSession = (appointmentId) => {
-    // 1. Keep your friends' appointment tracking logic
-    const startedAppointment = markAppointmentSessionStarted(appointmentId);
-    if (!startedAppointment || startedAppointment.status !== "scheduled") return;
+const handleStartSession = (appointmentId) => {
+  const startedAppointment = markAppointmentSessionStarted(appointmentId);
+  if (!startedAppointment || startedAppointment.status !== "scheduled") return;
 
-    const activeSession = {
-      appointmentId: startedAppointment.id,
-      startedAt: startedAppointment.startedAt || new Date().toISOString(),
-      contextItems: buildContextItemsFromAppointment(startedAppointment),
-    };
-    writeActiveAppointmentSession(activeSession);
-    setAppointments(readAppointments());
-
-    // 2. NEW: Extract the notes and redirect to /therapy instead of /chat
-    const notes = startedAppointment.therapistNotes || "";
-    router.push(`/therapy?notes=${encodeURIComponent(notes)}`);
+  // Keep local tracking logic
+  const activeSession = {
+    appointmentId: startedAppointment.id,
+    startedAt: startedAppointment.startedAt || new Date().toISOString(),
+    contextItems: buildContextItemsFromAppointment(startedAppointment),
   };
+  writeActiveAppointmentSession(activeSession);
+  setAppointments(readAppointments());
+
+  // REDIRECT CHANGE: Go to /chat and pass the therapistNotes
+  const notes = startedAppointment.therapistNotes || "";
+  router.push(`/chat?appointment=${startedAppointment.id}&notes=${encodeURIComponent(notes)}`);
+};
 
   const handleCancelSession = (appointmentId) => {
     const activeSession = readActiveAppointmentSession();
