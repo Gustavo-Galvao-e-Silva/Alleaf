@@ -56,18 +56,40 @@ def research_node(state: TherapySessionState):
     }
 
 def therapist_node(state: TherapySessionState):
+    """Agentic Loop: Can search history if needed."""
+    user_id = state.get('user_id')
     evidence_str = "\n".join(state.get('evidence', []))
-    system_prompt = f"You are a professional AI therapist. Ground your responses in this patient history: {evidence_str}"
-    
-    # Reconstruct the full message list for Gemini
+
+    system_prompt = f"""
+    You are a professional AI therapist.
+    CURRENT CONTEXT: {evidence_str}
+
+    If the user mentions something you don't recognize in the context (like a birthday,
+    a specific name, or a past event), use the 'search_user_history' tool to look it up.
+    """
+
     messages = [SystemMessage(content=system_prompt)] + state['transcript']
-    
-    try:
-        response = llm.invoke(messages)
-        return {"transcript": state['transcript'] + [response]}
-    except Exception as e:
-        print(f"Therapist Node LLM Error: {e}")
-        return {"transcript": state['transcript'] + [AIMessage(content="I'm here for you. Tell me more about that.")]}
+
+    # First call: LLM decides to reply OR call a tool
+    response = llm_with_tools.invoke(messages)
+
+    # If the LLM wants to call a tool:
+    if response.tool_calls:
+        for tool_call in response.tool_calls:
+            # 1. Execute the search
+            query = tool_call['args']['query']
+            print(f"--- AGENT TOOL CALL: Searching for '{query}' ---")
+            search_result = search_user_history.invoke({"query": query, "user_id": user_id})
+
+            # 2. Add tool result to conversation
+            messages.append(response) # Add the 'assistant' tool request
+            messages.append(ToolMessage(content=search_result, tool_call_id=tool_call['id']))
+
+        # 3. Final call: LLM sees the new data and gives the final therapeutic reply
+        final_response = llm_with_tools.invoke(messages)
+        return {"transcript": state['transcript'] + [final_response]}
+
+    return {"transcript": state['transcript'] + [response]}
 
 def wrap_up_node(state: TherapySessionState):
     exercise_prompt = "Generate 3 exercises (breathing, todo, script) in a JSON list format."
