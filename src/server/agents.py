@@ -25,6 +25,7 @@ llm_with_tools = llm.bind_tools(tools)
 
 def research_node(state: TherapySessionState):
     user_id = state.get('user_id')
+    user_notes = state.get('user_notes', "")
     query_topics = ["panic attacks and physical anxiety", "work stress and social anxiety", "sleep quality"]
     all_evidence = []
     
@@ -43,25 +44,34 @@ def research_node(state: TherapySessionState):
     unique_evidence = list(set(all_evidence))
     evidence_context = "\n".join([f"- {text}" for text in unique_evidence]) if unique_evidence else "No recent logs."
 
-    # FIX: Explicit list structure for LangChain Google adapter
-    messages = [
-        SystemMessage(content="You are a compassionate AI therapist."),
-        HumanMessage(content=f"Review these logs and write a 1-2 sentence empathetic opening: {evidence_context}")
-    ]
+    # 2. NEW: Generate the Agenda
+    agenda_prompt = f"""
+    You are a clinical supervisor. Based on the User's Pre-session Notes and Past History,
+    create a 3-point "Session Agenda" for the AI Therapist.
 
-    try:
-        response = llm.invoke(messages)
-        # FIX: Ensure result is a string
-        fft = ensure_text(response.content)
-    except Exception as e:
-        print(f"LLM ERROR in research_node: {e}")
-        fft = "I'm glad you're here today. How are things feeling?"
+    USER NOTES: {user_notes}
+    PAST HISTORY: {evidence_context}
+
+    Format the agenda as a weighted list of objectives.
+    """
+
+    agenda_response = llm.invoke([SystemMessage(content=agenda_prompt)])
+    agenda = ensure_text(agenda_response.content)
+
+    # 3. Generate the empathetic opening using the agenda
+    opening_res = llm.invoke([
+        SystemMessage(content="You are a compassionate therapist."),
+        HumanMessage(content=f"Based on this agenda, give a warm 1-sentence opening: {agenda}")
+    ])
+    fft = ensure_text(opening_res.content)
 
     return {
         "evidence": unique_evidence,
+        "agenda": agenda, # Save this to state!
         "food_for_thought": fft,
         "transcript": [AIMessage(content=fft)]
     }
+
 
 def therapist_node(state: TherapySessionState):
     user_id = state.get('user_id')
