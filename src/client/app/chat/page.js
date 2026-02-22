@@ -544,7 +544,11 @@ export default function ChatPage() {
     return Boolean(params.get("appointment") || readActiveAppointmentSession()?.appointmentId);
   });
   const [isVoiceAwaitingResponse, setIsVoiceAwaitingResponse] = useState(false);
-  const [isMiniOrbSettled, setIsMiniOrbSettled] = useState(false);
+  const [isMiniOrbSettled, setIsMiniOrbSettled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return Boolean(params.get("appointment") || readActiveAppointmentSession()?.appointmentId);
+  });
   const [voiceInputError, setVoiceInputError] = useState("");
   const { getInputVolume, getOutputVolume } = useVoiceLevels(isVoiceRunning);
   const voiceOrbLayoutId = "voice-orb";
