@@ -267,29 +267,32 @@ function VoiceInputController({
 function extractAssistantText(message) {
   if (!message || message.role !== "assistant") return "";
 
-  const chunks = [];
-
-  if (typeof message.content === "string") {
-    chunks.push(message.content);
-  }
-
-  if (Array.isArray(message.content)) {
-    for (const part of message.content) {
-      if (part && typeof part.text === "string") {
-        chunks.push(part.text);
-      }
-    }
-  }
-
   if (Array.isArray(message.parts)) {
+    const chunks = [];
     for (const part of message.parts) {
       if (part?.type === "text" && typeof part.text === "string") {
         chunks.push(part.text);
       }
     }
+    const text = chunks.join("\n").replace(/\s+/g, " ").trim();
+    if (text) return text;
   }
 
-  return chunks.join("\n").replace(/\s+/g, " ").trim();
+  if (typeof message.content === "string") {
+    return message.content.replace(/\s+/g, " ").trim();
+  }
+
+  if (Array.isArray(message.content)) {
+    const chunks = [];
+    for (const part of message.content) {
+      if (part && typeof part.text === "string") {
+        chunks.push(part.text);
+      }
+    }
+    return chunks.join("\n").replace(/\s+/g, " ").trim();
+  }
+
+  return "";
 }
 
 function VoiceOutputController({ isVoiceRunning, onVoiceOutputError }) {
