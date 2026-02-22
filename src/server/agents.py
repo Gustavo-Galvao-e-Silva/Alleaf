@@ -94,15 +94,25 @@ def therapist_node(state: TherapySessionState):
 def wrap_up_node(state: TherapySessionState):
     exercise_prompt = "Generate 3 exercises (breathing, todo, script) in a JSON list format."
     history = "\n".join([f"{'User' if isinstance(m, HumanMessage) else 'Therapist'}: {m.content}" for m in state['transcript']])
-    
+
     try:
         response = llm.invoke([
-            SystemMessage(content=exercise_prompt), 
+            SystemMessage(content=exercise_prompt),
             HumanMessage(content=f"Session history:\n{history}")
         ])
-        clean_json = response.content.replace('```json', '').replace('```', '').strip()
-        exercises = json.loads(clean_json)
+        content = response.content
+        # Better cleaning for markdown-wrapped JSON
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+        
+        exercises = json.loads(content)
+        # FORCE it to be a list
+        if isinstance(exercises, dict):
+            exercises = [exercises]
+            
     except Exception as e:
         print(f"Wrap Up Error: {e}")
-        exercises = []
+        exercises = [] # Return empty array instead of None or Error Object
     return {"exercises": exercises}
