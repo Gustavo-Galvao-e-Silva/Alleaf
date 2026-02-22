@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { format, startOfToday } from "date-fns";
 import dayjs from "dayjs";
@@ -39,81 +39,51 @@ import {
 } from "@/app/lib/appointments";
 
 import { useAuth } from "@clerk/nextjs";
+import exerciseData from "./data/exercises.json";
 
-const EXERCISES = [
-  {
-    id: "breathing",
-    name: "Breathing Exercise",
-    desc: "Deep breathing for relaxation",
-    duration: "5 min",
-    accent: "blue",
-    icon: (
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M18 8h1a4 4 0 010 8h-1" />
-        <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
-        <line x1="6" y1="1" x2="6" y2="4" />
-        <line x1="10" y1="1" x2="10" y2="4" />
-        <line x1="14" y1="1" x2="14" y2="4" />
-      </svg>
-    ),
-  },
-  {
-    id: "mindfulness",
-    name: "Mindfulness Meditation",
-    desc: "Focus on the present moment",
-    duration: "10 min",
-    accent: "purple",
-    icon: (
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M12 2a7 7 0 017 7c0 3-1.5 5-3 6.5V18H8v-2.5C6.5 14 5 12 5 9a7 7 0 017-7z" />
-        <path d="M9 22h6" />
-        <path d="M10 18v4" />
-        <path d="M14 18v4" />
-        <path d="M9 9h2" />
-        <path d="M13 9h2" />
-      </svg>
-    ),
-  },
-  {
-    id: "gratitude",
-    name: "Gratitude Practice",
-    desc: "Reflect on what you're thankful for",
-    duration: "7 min",
-    accent: "rose",
-    icon: (
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
-      </svg>
-    ),
-  },
-];
+const ACCENT_CYCLE = ["teal", "blue", "purple", "rose"];
+
+const ICON_BY_TYPE = {
+  interactive: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  ),
+  asynchronous: (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a7 7 0 017 7c0 3-1.5 5-3 6.5V18H8v-2.5C6.5 14 5 12 5 9a7 7 0 017-7z" />
+      <path d="M9 22h6" />
+      <path d="M10 18v4" />
+      <path d="M14 18v4" />
+    </svg>
+  ),
+};
+
+function parseExercises(data) {
+  return (data.exercises || []).map((raw, i) => {
+    const isInteractive = raw.type === "interactive";
+    const lines = isInteractive
+      ? raw.content.split("[BREAK]").map((s) => s.trim()).filter(Boolean)
+      : [];
+    const estimatedMinutes = isInteractive
+      ? Math.max(1, Math.round((lines.length * 10) / 60))
+      : Math.max(1, Math.round(raw.content.length / 800));
+
+    return {
+      id: raw.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      name: raw.title,
+      type: raw.type,
+      accent: ACCENT_CYCLE[i % ACCENT_CYCLE.length],
+      icon: ICON_BY_TYPE[raw.type] || ICON_BY_TYPE.interactive,
+      duration: `${estimatedMinutes} min`,
+      content: isInteractive ? lines : null,
+      rawContent: !isInteractive ? raw.content : null,
+    };
+  });
+}
+
+const EXERCISES = parseExercises(exerciseData);
 
 const REPEAT_OPTIONS = ["weekly", "monthly"];
 
@@ -142,6 +112,142 @@ function QuoteIcon() {
       <rect x="6" y="6" width="4" height="16" rx="2" />
       <rect x="16" y="6" width="4" height="16" rx="2" />
     </svg>
+  );
+}
+
+const LINE_DURATION_MS = 10000;
+
+function ExercisePlayer({ exercise, onClose }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [isFinished, setIsFinished] = useState(false);
+  const containerRef = useRef(null);
+  const lineRefs = useRef([]);
+  const lines = exercise.content || [];
+  const totalDuration = lines.length * LINE_DURATION_MS;
+
+  useEffect(() => {
+    if (isFinished) return;
+    const start = Date.now();
+    let raf;
+
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const currentIndex = Math.min(
+        Math.floor(elapsed / LINE_DURATION_MS),
+        lines.length - 1,
+      );
+
+      setActiveIndex(currentIndex);
+      setProgress(Math.min(elapsed / totalDuration, 1));
+
+      if (elapsed >= totalDuration) {
+        setIsFinished(true);
+        setProgress(1);
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [isFinished, lines.length, totalDuration]);
+
+  useEffect(() => {
+    const activeLine = lineRefs.current[activeIndex];
+    if (activeLine && containerRef.current) {
+      activeLine.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [activeIndex]);
+
+  const handleRestart = useCallback(() => {
+    setActiveIndex(0);
+    setProgress(0);
+    setIsFinished(false);
+  }, []);
+
+  return (
+    <div className={styles.playerOverlay}>
+      <div className={styles.playerHeader}>
+        <button
+          type="button"
+          className={styles.playerCloseButton}
+          onClick={onClose}
+          aria-label="Close exercise"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M19 12H5" />
+            <path d="M12 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div className={styles.playerHeaderInfo}>
+          <p className={styles.playerTitle}>{exercise.name}</p>
+          <p className={styles.playerSubtitle}>{exercise.duration}</p>
+        </div>
+      </div>
+
+      <div className={styles.playerLyrics} ref={containerRef}>
+        <div className={styles.playerLyricsSpacer} />
+        {lines.map((line, i) => (
+          <p
+            key={i}
+            ref={(el) => (lineRefs.current[i] = el)}
+            className={styles.playerLine}
+            data-state={
+              i === activeIndex ? "active" : i < activeIndex ? "past" : "future"
+            }
+          >
+            {line}
+          </p>
+        ))}
+        <div className={styles.playerLyricsSpacer} />
+      </div>
+
+      <div className={styles.playerFooter}>
+        <div className={styles.playerProgressTrack}>
+          <div
+            className={styles.playerProgressFill}
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+        <div className={styles.playerFooterActions}>
+          <span className={styles.playerTimeLabel}>
+            {Math.floor((activeIndex * LINE_DURATION_MS) / 60000)}:
+            {String(
+              Math.floor(((activeIndex * LINE_DURATION_MS) % 60000) / 1000),
+            ).padStart(2, "0")}
+          </span>
+          {isFinished && (
+            <button
+              type="button"
+              className={styles.playerRestartButton}
+              onClick={handleRestart}
+            >
+              Restart
+            </button>
+          )}
+          <span className={styles.playerTimeLabel}>
+            {Math.floor(totalDuration / 60000)}:
+            {String(Math.floor((totalDuration % 60000) / 1000)).padStart(
+              2,
+              "0",
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -215,6 +321,7 @@ export default function Home() {
     }
   }, [isLoaded, isSignedIn, router]);
 
+  const [activeExercise, setActiveExercise] = useState(null);
   const [appointments, setAppointments] = useState(() => readAppointments());
   const [scheduleSelection, setScheduleSelection] = useState(() =>
     getDefaultScheduleSelection(),
@@ -369,11 +476,12 @@ export default function Home() {
                 setIsScheduleDialogOpen(true);
               }}
             >
-              Schedule Meeting
+              Schedule a meeting
             </button>
           </div>
 
-          <div className={styles.appointmentList}>
+          <div className={styles.scheduleCard}>
+            <div className={styles.appointmentList}>
             {scheduledAppointments.length === 0 ? (
               <p className={styles.emptySchedule}>No scheduled meetings yet.</p>
             ) : (
@@ -423,16 +531,6 @@ export default function Home() {
                         : "One-time session"}
                     </p>
 
-                    {appointment.therapistNotes ? (
-                      <p className={styles.appointmentNotes}>
-                        {appointment.therapistNotes}
-                      </p>
-                    ) : (
-                      <p className={styles.appointmentNotesPlaceholder}>
-                        No therapist notes added.
-                      </p>
-                    )}
-
                     <div className={styles.appointmentActions}>
                       {isToday && (
                         <button
@@ -455,6 +553,7 @@ export default function Home() {
                 );
               })
             )}
+            </div>
           </div>
 
           <Dialog
@@ -615,27 +714,46 @@ export default function Home() {
         <section className={styles.exercisesSection}>
           <h2 className={styles.sectionTitle}>Wellness Exercises</h2>
           <div className={styles.exerciseList}>
-            {EXERCISES.map((ex) => (
-              <div
-                key={ex.id}
-                className={styles.exerciseCard}
-                data-accent={ex.accent}
-              >
-                <div className={styles.exerciseIcon} data-accent={ex.accent}>
-                  {ex.icon}
+            {EXERCISES.map((ex) => {
+              const isInteractive = ex.type === "interactive";
+              const typeLabel = isInteractive ? "Exercise" : "Meditation";
+              return (
+                <div
+                  key={ex.id}
+                  className={styles.exerciseCard}
+                  data-accent={ex.accent}
+                >
+                  <div className={styles.exerciseIcon} data-accent={ex.accent}>
+                    {ex.icon}
+                  </div>
+                  <div className={styles.exerciseInfo}>
+                    <p className={styles.exerciseName}>{ex.name}</p>
+                    <p className={styles.exerciseDuration}>{ex.duration}</p>
+                  </div>
+                  <div className={styles.exerciseActions}>
+                    <span className={styles.exerciseTypeBadge}>{typeLabel}</span>
+                    <button
+                      className={styles.startButton}
+                      onClick={() => isInteractive && setActiveExercise(ex)}
+                      disabled={!isInteractive}
+                    >
+                      {isInteractive ? "Start" : "Soon"}
+                    </button>
+                  </div>
                 </div>
-                <div className={styles.exerciseInfo}>
-                  <p className={styles.exerciseName}>{ex.name}</p>
-                  <p className={styles.exerciseDesc}>{ex.desc}</p>
-                  <p className={styles.exerciseDuration}>{ex.duration}</p>
-                </div>
-                <button className={styles.startButton}>Start</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
         <BottomNav activeItem="home" />
+
+        {activeExercise && (
+          <ExercisePlayer
+            exercise={activeExercise}
+            onClose={() => setActiveExercise(null)}
+          />
+        )}
       </main>
     </>
   );
