@@ -21,3 +21,5 @@ test/
 
 # ElevenLabs local agent implementation
 src/client/app/api/elevenlabs/
+# Input data
+src/server/data/input
