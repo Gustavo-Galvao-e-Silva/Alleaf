@@ -2,14 +2,23 @@ import os
 import time
 from cortex import CortexClient
 
-# Initialize Actian Cortex Client
-# This is our single source of truth for the DB connection
 client = CortexClient("localhost:50051")
-client.connect()
 COLLECTION = "user_journals"
 
+def ensure_connected():
+    """Checks if the client is connected, and if not, reconnects."""
+    try:
+        # Try a lightweight call to see if the connection is alive
+        client.has_collection(COLLECTION)
+    except Exception:
+        print("--- DB Connection lost. Reconnecting... ---")
+        try:
+            client.connect()
+        except:
+            pass # Already connected or handled by SDK internal logic
+
 def init_db():
-    """Ensure the collection exists on startup."""
+    ensure_connected() # Use our new helper
     if not client.has_collection(COLLECTION):
         client.create_collection(name=COLLECTION, dimension=384)
     return True
