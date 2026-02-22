@@ -1,9 +1,11 @@
 import "./globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata = {
   title: "Alleaf — Your Wellness Space",
-  description: "A calm, personal wellness companion for breathing, mindfulness, and gratitude.",
+  description:
+    "A calm, personal wellness companion for breathing, mindfulness, and gratitude.",
 };
 
 export const viewport = {
@@ -20,7 +22,9 @@ export default function RootLayout({ children }) {
         <link rel="preload" href="/perlin-noise.png" as="image" />
       </head>
       <body>
-        <TooltipProvider>{children}</TooltipProvider>
+        <ClerkProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

@@ -38,6 +38,12 @@ import {
   writeActiveAppointmentSession,
 } from "@/app/lib/appointments";
 
+import { useAuth } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/firebase";
+
 const EXERCISES = [
   {
     id: "breathing",
@@ -46,7 +52,16 @@ const EXERCISES = [
     duration: "5 min",
     accent: "blue",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M18 8h1a4 4 0 010 8h-1" />
         <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
         <line x1="6" y1="1" x2="6" y2="4" />
@@ -62,7 +77,16 @@ const EXERCISES = [
     duration: "10 min",
     accent: "purple",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M12 2a7 7 0 017 7c0 3-1.5 5-3 6.5V18H8v-2.5C6.5 14 5 12 5 9a7 7 0 017-7z" />
         <path d="M9 22h6" />
         <path d="M10 18v4" />
@@ -79,7 +103,16 @@ const EXERCISES = [
     duration: "7 min",
     accent: "rose",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
       </svg>
     ),
@@ -101,6 +134,19 @@ function SparkleIcon() {
   );
 }
 
+function QuoteIcon() {
+  return (
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 28 28"
+      fill="currentColor"
+      opacity="0.7"
+    >
+      <rect x="6" y="6" width="4" height="16" rx="2" />
+      <rect x="16" y="6" width="4" height="16" rx="2" />
+    </svg>
+  );
 function toLocalDateTimeInputValue(date) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
   return localDate.toISOString().slice(0, 16);
@@ -159,6 +205,21 @@ function buildScheduledDateFromSelection(selection) {
 
 export default function Home() {
   const router = useRouter();
+  const { isSignedIn, userId } = useAuth();
+  const [userName, setUserName] = useState("");
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      router.push("/sign-in");
+    }
+  }, [isSignedIn, router]);
+
+  useEffect(() => {
+    if (!userId) return;
+    getDoc(doc(db, "users", userId)).then((snap) => {
+      if (snap.exists()) setUserName(snap.data().name?.split(" ")[0] ?? "");
+    });
+  }, [userId]);
   const [appointments, setAppointments] = useState(() => readAppointments());
   const [scheduleSelection, setScheduleSelection] = useState(() =>
     getDefaultScheduleSelection(),
@@ -250,19 +311,21 @@ export default function Home() {
           <span className={styles.sparkleIcon}>
             <SparkleIcon />
           </span>
-          <h1 className={styles.greeting}>Hello, <TypedName name="Deep" /></h1>
+          <h1 className={styles.greeting}>
+            Hello, <TypedName name={userName || "there"} />
+          </h1>
           <p className={styles.subtitle}>Welcome back to your wellness space</p>
         </section>
 
-      {/* Daily Quote */}
-      <section className={styles.quoteSection}>
-        <div className={styles.quoteCard}>
-          <p className={styles.quoteText}>
-            Your limitation—it&apos;s only your imagination.
-          </p>
-          <p className={styles.quoteAttribution}>— Unknown</p>
-        </div>
-      </section>
+        {/* Daily Quote */}
+        <section className={styles.quoteSection}>
+          <div className={styles.quoteCard}>
+            <p className={styles.quoteText}>
+              Your limitation—it&apos;s only your imagination.
+            </p>
+            <p className={styles.quoteAttribution}>— Unknown</p>
+          </div>
+        </section>
 
         {/* Schedule Section */}
       <section className={styles.scheduleSection}>
@@ -470,27 +533,31 @@ export default function Home() {
       </section>
 
       {/* Wellness Exercises */}
-      <section className={styles.exercisesSection}>
-        <h2 className={styles.sectionTitle}>Wellness Exercises</h2>
-        <div className={styles.exerciseList}>
-          {EXERCISES.map((ex) => (
-            <div key={ex.id} className={styles.exerciseCard} data-accent={ex.accent}>
-              <div className={styles.exerciseIcon} data-accent={ex.accent}>
-                {ex.icon}
+        <section className={styles.exercisesSection}>
+          <h2 className={styles.sectionTitle}>Wellness Exercises</h2>
+          <div className={styles.exerciseList}>
+            {EXERCISES.map((ex) => (
+              <div
+                key={ex.id}
+                className={styles.exerciseCard}
+                data-accent={ex.accent}
+              >
+                <div className={styles.exerciseIcon} data-accent={ex.accent}>
+                  {ex.icon}
+                </div>
+                <div className={styles.exerciseInfo}>
+                  <p className={styles.exerciseName}>{ex.name}</p>
+                  <p className={styles.exerciseDesc}>{ex.desc}</p>
+                  <p className={styles.exerciseDuration}>{ex.duration}</p>
+                </div>
+                <button className={styles.startButton}>Start</button>
               </div>
-              <div className={styles.exerciseInfo}>
-                <p className={styles.exerciseName}>{ex.name}</p>
-                <p className={styles.exerciseDesc}>{ex.desc}</p>
-                <p className={styles.exerciseDuration}>{ex.duration}</p>
-              </div>
-              <button className={styles.startButton}>Start</button>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
 
-      <BottomNav activeItem="home" />
-    </main>
+        <BottomNav activeItem="home" />
+      </main>
     </>
   );
 }
