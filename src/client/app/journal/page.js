@@ -111,12 +111,36 @@ export default function JournalPage() {
   const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
   const showSave = isDirty && saveLabel !== "saved";
 
-  const handleSave = () => {
-    const title = activeTab === 0 ? freeTitle : promptedTitle;
-    const body = activeTab === 0 ? freeBody : promptedBody;
-    const type = activeTab === 0 ? "Free Writing" : "Prompted";
-    const { date, time } = formatDateTime();
+	// Alleaf/src/client/app/journal/page.js
 
+const handleSave = async () => {
+  const title = activeTab === 0 ? freeTitle : promptedTitle;
+  const body = activeTab === 0 ? freeBody : promptedBody;
+  const type = activeTab === 0 ? "Free Writing" : "Prompted";
+  const { date, time } = formatDateTime();
+
+  // Combine title and body for the vector DB searchability
+  const fullTextForAI = `Title: ${title}\nContent: ${body}`;
+
+  if (!body.trim()) return; // Don't save empty notes
+
+  setSaving(true); // Optional: add a saving state to your component
+
+  try {
+    // 1. Send to our API route which proxies to the Python Bridge
+    const response = await fetch('/api/journal/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: user.id, // Clerk User ID
+        text: fullTextForAI,
+        id: editingId || Date.now(),
+      })
+    });
+
+    if (!response.ok) throw new Error("Failed to sync with database");
+
+    // 2. Update local UI state (keeping your friend's logic)
     const entry = {
       id: editingId || Date.now(),
       title: title || "Untitled",
@@ -132,22 +156,30 @@ export default function JournalPage() {
     } else {
       setHistory((prev) => [entry, ...prev]);
     }
+
     setSaveLabel("saved");
 
+    // 3. Clear inputs if it was a new entry
     if (!editingId) {
       if (activeTab === 0) {
         setFreeTitle("");
         setFreeBody("");
-      }
-      if (activeTab === 1) {
+      } else {
         setPromptedTitle("");
         setPromptedBody("");
       }
     }
 
-    if (activeTab === 0) setFreeDirty(false);
-    if (activeTab === 1) setPromptedDirty(false);
-  };
+    setFreeDirty(false);
+    setPromptedDirty(false);
+
+  } catch (err) {
+    console.error("Journal Save Error:", err);
+    alert("Could not save to the cloud. Check if the backend bridge is running.");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleHistoryClick = (entry) => {
     const tabIndex = entry.type === "Free Writing" ? 0 : 1;
