@@ -518,6 +518,7 @@ useEffect(() => {
   }, []);
 
   const [activeExercise, setActiveExercise] = useState(null);
+  const [activeTextExercise, setActiveTextExercise] = useState(null);
 
 const [appointments, setAppointments] = useState([]); // Start empty
 const [hasMounted, setHasMounted] = useState(false)
@@ -959,10 +960,9 @@ const handleStartSession = (appointmentId) => {
                   </div>
                   <button
                     className={styles.startButton}
-                    onClick={() => isInteractive && setActiveExercise(ex)}
-                    disabled={!isInteractive}
+                    onClick={() => isInteractive ? setActiveExercise(ex) : setActiveTextExercise(ex)}
                   >
-                    {isInteractive ? "Start" : "Soon"}
+                    {isInteractive ? "Start" : "Begin"}
                   </button>
                 </div>
               );
@@ -977,6 +977,50 @@ const handleStartSession = (appointmentId) => {
             exercise={activeExercise}
             onClose={() => setActiveExercise(null)}
           />
+        )}
+
+        {activeTextExercise && (
+          <div className={styles.playerOverlay}>
+            <div className={styles.playerHeader}>
+              <button
+                type="button"
+                className={styles.playerCloseButton}
+                onClick={() => setActiveTextExercise(null)}
+                aria-label="Close exercise"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 12H5" />
+                  <path d="M12 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <div className={styles.playerHeaderInfo}>
+                <p className={styles.playerTitle}>{activeTextExercise.name}</p>
+                <p className={styles.playerSubtitle}>{activeTextExercise.duration}</p>
+              </div>
+            </div>
+            <div className={styles.textExerciseBody}>
+              {(activeTextExercise.rawContent || "").split("\n").map((line, i) => {
+                const trimmed = line.trim();
+                if (!trimmed) return <div key={i} className={styles.textExerciseSpacer} />;
+                const listMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+                const renderBold = (text) =>
+                  text.split(/(\*\*.*?\*\*)/).map((part, j) =>
+                    part.startsWith("**") && part.endsWith("**")
+                      ? <strong key={j}>{part.slice(2, -2)}</strong>
+                      : part
+                  );
+                if (listMatch) {
+                  return (
+                    <div key={i} className={styles.textExerciseListItem}>
+                      <span className={styles.textExerciseListNum}>{listMatch[1]}</span>
+                      <p>{renderBold(listMatch[2])}</p>
+                    </div>
+                  );
+                }
+                return <p key={i} className={styles.textExerciseParagraph}>{renderBold(trimmed)}</p>;
+              })}
+            </div>
+          </div>
         )}
       </main>
     </>
