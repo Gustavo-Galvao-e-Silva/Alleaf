@@ -5,8 +5,10 @@ import TypedName from "./components/TypedName";
 import BottomNav from "./components/BottomNav";
 
 import { useAuth } from "@clerk/nextjs";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/firebase";
 
 const EXERCISES = [
   {
@@ -113,13 +115,21 @@ function QuoteIcon() {
 
 export default function Home() {
   const router = useRouter();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, userId } = useAuth();
+  const [userName, setUserName] = useState("");
 
   useEffect(() => {
     if (!isSignedIn) {
       router.push("/sign-in");
     }
   }, [isSignedIn, router]);
+
+  useEffect(() => {
+    if (!userId) return;
+    getDoc(doc(db, "users", userId)).then((snap) => {
+      if (snap.exists()) setUserName(snap.data().name?.split(" ")[0] ?? "");
+    });
+  }, [userId]);
 
   return (
     <>
@@ -131,7 +141,7 @@ export default function Home() {
             <SparkleIcon />
           </span>
           <h1 className={styles.greeting}>
-            Hello, <TypedName name="Deep" />
+            Hello, <TypedName name={userName || "there"} />
           </h1>
           <p className={styles.subtitle}>Welcome back to your wellness space</p>
         </section>
