@@ -133,7 +133,7 @@ function QuoteIcon() {
   );
 }
 
-const LINE_DURATION_MS = 7000;
+const LINE_DURATION_MS = 10000;
 
 function normalizeLineForTts(line) {
   return line
