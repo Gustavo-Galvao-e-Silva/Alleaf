@@ -651,15 +651,6 @@ const handleStartSession = (appointmentId) => {
       <main className={styles.page}>
 
 
-{/* ADD THIS: The Recap Card UI */}
-        {sessionMemory && (
-          <section className="px-6 mt-8">
-            <div className="bg-white/80 backdrop-blur-md p-6 rounded-3xl border border-white shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2">💡 Last Session Recap</p>
-              <p className="text-gray-700 italic text-sm leading-relaxed">"{sessionMemory}"</p>
-            </div>
-          </section>
-        )}
 
 
 
