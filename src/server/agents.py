@@ -88,6 +88,9 @@ def therapist_node(state: TherapySessionState):
         # 3. Final call: LLM sees the new data and gives the final therapeutic reply
         final_response = llm_with_tools.invoke(messages)
         return {"transcript": state['transcript'] + [final_response]}
+    
+    if isinstance(response.content, list):
+        response.content = "".join([part.get("text", "") if isinstance(part, dict) else str(part) for part in response.content])
 
     return {"transcript": state['transcript'] + [response]}
 
