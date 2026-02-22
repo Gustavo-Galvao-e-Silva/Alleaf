@@ -69,8 +69,8 @@ export default function OnboardingPage() {
       // 3. Reload session so the updated metadata is reflected in the JWT
       await user.reload();
 
-      // 4. Hard navigate so the middleware re-reads the new token
-      window.location.href = "/";
+      // 4. Hard navigate to hardware calibration step
+      window.location.href = "/hardware_calibration";
     } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");
