@@ -1,7 +1,7 @@
 "use client";
 
 import { db } from "@/firebase";
-import { doc, onSnapshot } from "firebase/firestore"; // Firestore functions
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -42,8 +42,6 @@ import {
 } from "@/app/lib/appointments";
 
 import { useAuth, useUser } from "@clerk/nextjs";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/firebase";
 import { useBleHeartRate } from "./hooks/useBleHeartRate";
 import exerciseData from "./testData/exercises.json";
 
@@ -814,6 +812,7 @@ const handleStartSession = (appointmentId) => {
                           Edit session
                         </button>
                       </div>
+                    </div>
 
                       <p className={styles.appointmentMeta}>
                         {formatAppointmentDateTime(
