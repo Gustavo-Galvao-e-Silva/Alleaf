@@ -66,18 +66,32 @@ def research_node(state: TherapySessionState):
 def therapist_node(state: TherapySessionState):
     user_id = state.get('user_id')
     evidence_str = "\n".join(state.get('evidence', []))
-    system_prompt = f"You are a professional AI therapist. Context: {evidence_str}"
+
+
+    system_prompt = f"""
+    You are a professional AI therapist. 
+    User ID: {user_id}
+    CURRENT CONTEXT: {evidence_str}
+    
+    If you need to search past entries, use 'search_user_history'. 
+    The user_id is already provided in the system context; do not ask the user for it.
+    """
+
+
     messages = [SystemMessage(content=system_prompt)] + state['transcript']
 
     response = llm_with_tools.invoke(messages)
 
     if response.tool_calls:
         for tool_call in response.tool_calls:
-            query = tool_call['args']['query']
-            print(f"--- AGENT TOOL CALL: Searching for '{query}' ---")
+
+            query = tool_call['args'].get('query', '')
+            print(f"--- AGENT TOOL CALL: Searching for '{query}' for user '{user_id}' ---")
+
             search_result = search_user_history.invoke({"query": query, "user_id": user_id})
             messages.append(response)
             messages.append(ToolMessage(content=search_result, tool_call_id=tool_call['id']))
+
         # Get final response after tool call
         response = llm_with_tools.invoke(messages)
 

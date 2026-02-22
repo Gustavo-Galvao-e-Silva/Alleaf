@@ -9,6 +9,8 @@ def search_user_history(query: str, user_id: str):
     Searches the user's past journal entries and session summaries for specific information.
     Use this when the user mentions a specific event, person, or date (like a birthday) 
     that isn't in the current context.
+    NOTE: The user_id is automatically provided by the system.
+    DO NOT ask the user for their ID.
     """
     try:
         vector = get_embedding(query)
