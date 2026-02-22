@@ -46,12 +46,13 @@ def research_node(state: TherapySessionState):
     # FIX: Explicit list structure for LangChain Google adapter
     messages = [
         SystemMessage(content="You are a compassionate AI therapist."),
-        HumanMessage(content=f"Review these logs and write a 1-2 sentence empathetic opening referencing a recurring theme: {evidence_context}")
+        HumanMessage(content=f"Review these logs and write a 1-2 sentence empathetic opening: {evidence_context}")
     ]
 
     try:
         response = llm.invoke(messages)
-        fft = response.content
+        # FIX: Ensure result is a string
+        fft = ensure_text(response.content)
     except Exception as e:
         print(f"LLM ERROR in research_node: {e}")
         fft = "I'm glad you're here today. How are things feeling?"
@@ -63,42 +64,25 @@ def research_node(state: TherapySessionState):
     }
 
 def therapist_node(state: TherapySessionState):
-    """Agentic Loop: Can search history if needed."""
     user_id = state.get('user_id')
     evidence_str = "\n".join(state.get('evidence', []))
-
-    system_prompt = f"""
-    You are a professional AI therapist.
-    CURRENT CONTEXT: {evidence_str}
-
-    If the user mentions something you don't recognize in the context (like a birthday,
-    a specific name, or a past event), use the 'search_user_history' tool to look it up.
-    """
-
+    system_prompt = f"You are a professional AI therapist. Context: {evidence_str}"
     messages = [SystemMessage(content=system_prompt)] + state['transcript']
 
-    # First call: LLM decides to reply OR call a tool
     response = llm_with_tools.invoke(messages)
 
-    # If the LLM wants to call a tool:
     if response.tool_calls:
         for tool_call in response.tool_calls:
-            # 1. Execute the search
             query = tool_call['args']['query']
             print(f"--- AGENT TOOL CALL: Searching for '{query}' ---")
             search_result = search_user_history.invoke({"query": query, "user_id": user_id})
-
-            # 2. Add tool result to conversation
-            messages.append(response) # Add the 'assistant' tool request
+            messages.append(response)
             messages.append(ToolMessage(content=search_result, tool_call_id=tool_call['id']))
-
+        # Get final response after tool call
         response = llm_with_tools.invoke(messages)
 
-    if isinstance(response.content, list):
-        response.content = "".join([part.get("text", "") if isinstance(part, dict) else str(part) for part in response.content])
-    else:
-        response.content = str(response.content)
-
+    # FIX: Always clean content regardless of which branch was taken
+    response.content = ensure_text(response.content)
     return {"transcript": state['transcript'] + [response]}
 
 def wrap_up_node(state: TherapySessionState):
@@ -110,19 +94,18 @@ def wrap_up_node(state: TherapySessionState):
             SystemMessage(content=exercise_prompt),
             HumanMessage(content=f"Session history:\n{history}")
         ])
-        content = response.content
-        # Better cleaning for markdown-wrapped JSON
+        # FIX: Clean content before JSON parsing
+        content = ensure_text(response.content)
+        
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
-        
+
         exercises = json.loads(content)
-        # FORCE it to be a list
         if isinstance(exercises, dict):
             exercises = [exercises]
-            
     except Exception as e:
         print(f"Wrap Up Error: {e}")
-        exercises = [] # Return empty array instead of None or Error Object
+        exercises = []
     return {"exercises": exercises}
