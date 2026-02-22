@@ -42,6 +42,7 @@ def predict():
         rr_array = data["currentRR"]
         user_data = data["userData"]
         user_baseline = user_data["baselineRR"]
+        user_data["sex"] = "M" if user_data["sex"] == "male" else "F"
 
         result = predict_stress(rr_array, user_baseline, user_data)
 
