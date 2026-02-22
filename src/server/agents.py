@@ -8,6 +8,13 @@ import db
 from cortex import Filter, Field
 from tools import search_user_history
 
+def ensure_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join([part.get("text", "") if isinstance(part, dict) else str(part) for part in content])
+    return str(content)
+
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     google_api_key=os.getenv("GEMINI_API_KEY"),
