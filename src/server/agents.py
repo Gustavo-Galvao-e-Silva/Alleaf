@@ -4,7 +4,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from state import TherapySessionState
 from embedder import get_embedding
-import db 
+import db
 from cortex import Filter, Field
 from tools import search_user_history
 
@@ -25,17 +25,17 @@ llm_with_tools = llm.bind_tools(tools)
 
 def research_node(state: TherapySessionState):
     user_id = state.get('user_id')
-    user_notes = state.get('user_notes', "")
+    user_notes = state.get('user_notes', "No specific notes provided.")
     query_topics = ["panic attacks and physical anxiety", "work stress and social anxiety", "sleep quality"]
     all_evidence = []
-    
+
+    # 1. Gather Historical Context
     for topic in query_topics:
         try:
             vector = get_embedding(topic)
             user_filter = Filter().must(Field("user_id").eq(user_id))
             results = db.client.search(db.COLLECTION, query=vector, filter=user_filter, top_k=3, with_payload=True)
             for r in results:
-                # Ensure the key exists in payload
                 if 'text' in r.payload:
                     all_evidence.append(r.payload['text'])
         except Exception as e:
@@ -44,70 +44,81 @@ def research_node(state: TherapySessionState):
     unique_evidence = list(set(all_evidence))
     evidence_context = "\n".join([f"- {text}" for text in unique_evidence]) if unique_evidence else "No recent logs."
 
-    # 2. NEW: Generate the Agenda
+    # 2. GENERATE AGENDA: Synthesize notes + history
     agenda_prompt = f"""
-    You are a clinical supervisor. Based on the User's Pre-session Notes and Past History,
-    create a 3-point "Session Agenda" for the AI Therapist.
+    You are a clinical supervisor. Create a 3-point "Session Agenda" for the AI Therapist.
+    
+    USER'S CURRENT CONCERNS (Pre-session notes): {user_notes}
+    USER'S HISTORY: {evidence_context}
 
-    USER NOTES: {user_notes}
-    PAST HISTORY: {evidence_context}
-
-    Format the agenda as a weighted list of objectives.
+    Format this as a clear 'Weighted List of Objectives' for the therapist to follow.
     """
 
-    agenda_response = llm.invoke([SystemMessage(content=agenda_prompt)])
-    agenda = ensure_text(agenda_response.content)
+    try:
+        agenda_response = llm.invoke([SystemMessage(content=agenda_prompt)])
+        agenda = ensure_text(agenda_response.content)
+    except Exception as e:
+        print(f"Agenda Generation Error: {e}")
+        agenda = "Provide general empathetic support and address user concerns."
 
-    # 3. Generate the empathetic opening using the agenda
-    opening_res = llm.invoke([
-        SystemMessage(content="You are a compassionate therapist."),
-        HumanMessage(content=f"Based on this agenda, give a warm 1-sentence opening: {agenda}")
-    ])
-    fft = ensure_text(opening_res.content)
+    # 3. Generate Opening
+    try:
+        opening_res = llm.invoke([
+            SystemMessage(content="You are a compassionate therapist starting a session."),
+            HumanMessage(content=f"Based on this agenda, give a warm 1-2 sentence opening that acknowledges their notes: {agenda}")
+        ])
+        fft = ensure_text(opening_res.content)
+    except Exception as e:
+        print(f"Opening Error: {e}")
+        fft = "I'm here and ready to listen. How are you feeling today?"
 
     return {
         "evidence": unique_evidence,
-        "agenda": agenda, # Save this to state!
+        "agenda": agenda,
         "food_for_thought": fft,
         "transcript": [AIMessage(content=fft)]
     }
 
-
 def therapist_node(state: TherapySessionState):
     user_id = state.get('user_id')
     evidence_str = "\n".join(state.get('evidence', []))
+    agenda = state.get('agenda', "Provide general emotional support.")
 
-
+    # We keep user_id and context, but ADD the agenda as the primary directive
     system_prompt = f"""
-    You are a professional AI therapist. 
+    You are a professional AI therapist.
     User ID: {user_id}
-    CURRENT CONTEXT: {evidence_str}
     
-    If you need to search past entries, use 'search_user_history'. 
-    The user_id is already provided in the system context; do not ask the user for it.
+    HISTORICAL CONTEXT:
+    {evidence_str}
+
+    SESSION AGENDA (Your primary objectives for this session):
+    {agenda}
+
+    INSTRUCTIONS:
+    1. Focus on the Agenda points, but stay flexible if the user needs to vent.
+    2. Use 'search_user_history' if you need more details on a specific past event.
+    3. The user_id is already provided; do not ask for it.
     """
 
-
     messages = [SystemMessage(content=system_prompt)] + state['transcript']
-
     response = llm_with_tools.invoke(messages)
 
     if response.tool_calls:
         for tool_call in response.tool_calls:
-
             query = tool_call['args'].get('query', '')
             print(f"--- AGENT TOOL CALL: Searching for '{query}' for user '{user_id}' ---")
-
             search_result = search_user_history.invoke({"query": query, "user_id": user_id})
             messages.append(response)
             messages.append(ToolMessage(content=search_result, tool_call_id=tool_call['id']))
-
-        # Get final response after tool call
+        
         response = llm_with_tools.invoke(messages)
 
-    # FIX: Always clean content regardless of which branch was taken
     response.content = ensure_text(response.content)
     return {"transcript": state['transcript'] + [response]}
+
+# wrap_up_node and therapist_stream_node remain largely the same, 
+# but could optionally use state.get('agenda') for better summaries.
 
 def wrap_up_node(state: TherapySessionState):
     exercise_prompt = """
@@ -165,11 +176,18 @@ def wrap_up_node(state: TherapySessionState):
 def therapist_stream_node(state: TherapySessionState):
     user_id = state.get('user_id')
     evidence_str = "\n".join(state.get('evidence', []))
-    system_prompt = f"You are a professional AI therapist. User ID: {user_id}. Context: {evidence_str}"
+    agenda = state.get('agenda', "Provide general emotional support.") # Add this
+
+    # Match the prompt from therapist_node for consistency
+    system_prompt = f"""
+    You are a professional AI therapist. User ID: {user_id}.
+
+    SESSION AGENDA:
+    {agenda}
+
+    CONTEXT: {evidence_str}
+    """
     messages = [SystemMessage(content=system_prompt)] + state['transcript']
 
-    # We use .stream instead of .invoke
-    # Note: Tool calling with streaming is complex,
-    # so we will stream the FINAL response.
     for chunk in llm.stream(messages):
         yield ensure_text(chunk.content)
