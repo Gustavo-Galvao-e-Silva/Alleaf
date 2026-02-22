@@ -129,76 +129,59 @@ export default function JournalPage() {
 
   // 4. Persistence Logic
   const handleSave = async () => {
-    // Safety guard for Clerk loading
-    if (!isLoaded || !isSignedIn || !user) {
-      alert("Authentication not ready. Please wait.");
-      return;
-    }
+  if (!isLoaded || !isSignedIn || !user) {
+    alert("Authentication not ready. Please wait.");
+    return;
+  }
 
-    const title = activeTab === 0 ? freeTitle : promptedTitle;
-    const body = activeTab === 0 ? freeBody : promptedBody;
-    const type = activeTab === 0 ? "Free Writing" : "Prompted";
-    const { date, time } = formatDateTime();
+  const isFree = activeTab === 0;
+  const title = isFree ? freeTitle : promptedTitle;
+  const body = isFree ? freeBody : promptedBody;
 
-    if (!body.trim()) return;
+  if (!body.trim()) return;
 
-    const fullTextForAI = `Title: ${title || "Untitled"}\nContent: ${body}`;
-    setSaving(true);
+  const type = isFree ? "free" : "prompted";
+  const prompt = isFree ? null : currentPrompt;
 
-    try {
-      // Hit the Next.js API route which proxies to Python
-      const response = await fetch('/api/journal/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id, 
-          text: fullTextForAI,
-          id: editingId || Date.now(),
-        })
-      });
+  setSaving(true);
 
-      if (!response.ok) throw new Error("Failed to sync with backend");
-
-      const entry = {
-        id: editingId || Date.now(),
-        title: title || "Untitled",
-        date,
-        time,
-        type,
+  try {
+    const res = await fetch("/api/journal/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.id,
+        title,
         body,
-        preview: body.length > 80 ? body.slice(0, 80) + "…" : body,
-      };
+        type,
+        prompt,
+        // id: editingId || undefined, // enable if you want overwrite edits
+      }),
+    });
 
-      if (editingId) {
-        setHistory((prev) => prev.map((h) => (h.id === editingId ? entry : h)));
-      } else {
-        setHistory((prev) => [entry, ...prev]);
-      }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Save failed");
 
-      setSaveLabel("saved");
-      setEditingId(null);
+    setSaveLabel("saved");
+    setEditingId(null);
 
-      // Reset editors for new entries
-      if (!editingId) {
-        if (activeTab === 0) {
-          setFreeTitle("");
-          setFreeBody("");
-        } else {
-          setPromptedTitle("");
-          setPromptedBody("");
-        }
-      }
-
+    // Optional: clear editor after save
+    if (isFree) {
+      setFreeTitle("");
+      setFreeBody("");
       setFreeDirty(false);
+    } else {
+      setPromptedTitle("");
+      setPromptedBody("");
       setPromptedDirty(false);
-
-    } catch (err) {
-      console.error("Journal Save Error:", err);
-      alert("Could not save to the cloud. Check if the backend is running.");
-    } finally {
-      setSaving(false);
     }
-  };
+  } catch (err) {
+    console.error("Journal Save Error:", err);
+    alert(err.message || "Could not save.");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleHistoryClick = (entry) => {
     const tabIndex = entry.type === "Free Writing" ? 0 : 1;
@@ -209,6 +192,7 @@ export default function JournalPage() {
     } else {
       setPromptedTitle(entry.title === "Untitled" ? "" : entry.title);
       setPromptedBody(entry.body);
+      if (entry.prompt) setCurrentPrompt(entry.prompt);
       setPromptedDirty(false);
     }
     setEditingId(entry.id);
@@ -217,12 +201,22 @@ export default function JournalPage() {
   };
 
   // 5. Effects
-  useEffect(() => {
-    if (saveLabel === "saved") {
-      const timer = setTimeout(() => setSaveLabel(""), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [saveLabel]);
+useEffect(() => {
+  if (!isLoaded || !isSignedIn || !user) return;
+  if (activeTab !== 2) return;
+
+  (async () => {
+    const res = await fetch("/api/journal/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "list", userId: user.id, pageSize: 50 }),
+    });
+
+    const data = await res.json();
+    if (res.ok) setHistory(data.items || []);
+    else console.error(data);
+  })();
+}, [activeTab, isLoaded, isSignedIn, user]);
 
   // 6. UI Helpers
   const isDirty = activeTab === 0 ? freeDirty : activeTab === 1 ? promptedDirty : false;
@@ -317,7 +311,7 @@ export default function JournalPage() {
                 <div className={styles.historyHeader}>
                   <span className={styles.historyTitle}>{entry.title}</span>
                   <span className={styles.historyMeta}>
-                    {entry.date} &middot; {entry.time}
+                    {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""} &middot; {entry.createdAt ? new Date(entry.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : ""}
                   </span>
                 </div>
                 <span className={styles.historyType}>{entry.type}</span>
