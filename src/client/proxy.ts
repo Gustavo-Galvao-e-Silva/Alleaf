@@ -3,10 +3,12 @@ import { NextResponse } from 'next/server';
 
 interface UserMetadata {
   onboardingComplete?: boolean;
+  calibrationComplete?: boolean;
 }
 
 const isPublicRoute = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)']);
 const isOnboardingRoute = createRouteMatcher(['/onboarding(.*)']);
+const isCalibrationRoute = createRouteMatcher(['/hardware_calibration(.*)']);
 const isApiRoute = createRouteMatcher(['/api/(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -37,8 +39,23 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(new URL('/onboarding', req.url));
   }
 
-  // Signed in and onboarding done but trying to hit /onboarding → send to app
+  // Signed in and onboarding done but trying to hit /onboarding → send to calibration
   if (metadata.onboardingComplete && isOnboardingRoute(req)) {
+    return NextResponse.redirect(new URL('/hardware_calibration', req.url));
+  }
+
+  // Onboarding done but calibration not complete → force to /hardware_calibration
+  if (
+    metadata.onboardingComplete &&
+    !metadata.calibrationComplete &&
+    !isCalibrationRoute(req) &&
+    !isPublicRoute(req)
+  ) {
+    return NextResponse.redirect(new URL('/hardware_calibration', req.url));
+  }
+
+  // Calibration done but trying to hit /hardware_calibration → send to app
+  if (metadata.calibrationComplete && isCalibrationRoute(req)) {
     return NextResponse.redirect(new URL('/', req.url));
   }
 });
