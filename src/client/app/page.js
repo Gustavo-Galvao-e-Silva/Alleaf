@@ -821,7 +821,7 @@ export default function Home() {
           <div className={styles.exerciseList}>
             {EXERCISES.map((ex) => {
               const isInteractive = ex.type === "interactive";
-              const typeLabel = isInteractive ? "Exercise" : "Meditation";
+              const typeLabel = isInteractive ? "Meditation" : "Exercise";
               return (
                 <div
                   key={ex.id}

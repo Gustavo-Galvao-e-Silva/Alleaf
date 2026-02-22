@@ -249,6 +249,36 @@
   margin-bottom: var(--space-1);
 }
 
+.promptHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.refreshBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: rgba(107, 163, 146, 0.1);
+  color: #4A8B7A;
+  cursor: pointer;
+  transition: background 200ms ease-out, transform 200ms ease-out;
+}
+
+.refreshBtn:hover {
+  background: rgba(107, 163, 146, 0.2);
+}
+
+.refreshBtn:active {
+  transform: scale(0.9);
+  background: rgba(107, 163, 146, 0.25);
+}
+
 .promptText {
   font-family: var(--font-sans);
   font-size: var(--text-base);
