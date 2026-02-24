@@ -48,7 +48,7 @@ No waiting rooms. No scheduling. Just calm, on demand.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/alleaf.git
+git clone https://github.com/Gustav-Galvao-e-Silva/alleaf.git
 cd alleaf
 
 # Install frontend dependencies
@@ -117,3 +117,10 @@ This project was built during **Hackalytics** in **2026**.
 | Gustavo | ML |
 | Jhoon | Hardware |
 | Kalyan | Backend |
+
+---
+
+## Data Source
+
+This project used the publicly available [WESAD dataset](https://ubi29.informatik.uni-siegen.de/usi/data_wesad.html):
+Philip Schmidt, Attila Reiss, Robert Duerichen, Claus Marberger and Kristof Van Laerhoven, "Introducing WESAD, a multimodal dataset for Wearable Stress and Affect Detection", ICMI 2018, Boulder, USA, 2018.
