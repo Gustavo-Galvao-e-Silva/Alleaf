@@ -70,6 +70,10 @@ flask run
 # Start the Next.js frontend (in a separate terminal)
 cd client
 npm run dev
+
+# Start docker processes
+cd server/docker
+docker compose up -d
 ```
 
 Then open [http://localhost:3000](http://localhost:3000) and pair your wearable to begin.
